@@ -143,7 +143,7 @@ def scrape_rr(url):
             except Exception:
                 pass
 
-            out.append((name, f, tone, duplex_hint, offset_hint))
+                out.append((name, f, tone, duplex_hint, offset_hint, desc))
     return out
 
 def get_pages_from_user():
@@ -295,25 +295,52 @@ def map_zips_to_counties(zips):
 def launch_gui_and_run(default_pages, output_path):
     import tkinter as tk
     from tkinter import ttk, messagebox
+    import webbrowser
 
     root = tk.Tk()
     root.title('CHIRP RR Scraper')
 
-    # Help menu with 'Find My Location' dialog
-
-    import webbrowser
-
     menubar = tk.Menu(root)
     helpmenu = tk.Menu(menubar, tearoff=0)
 
+    # Contact submenu
+    contactmenu = tk.Menu(helpmenu, tearoff=0)
+
     def open_donations():
-        # Open the local index.html in the default web browser
         html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'media', 'index.html'))
         webbrowser.open(f'file://{html_path}')
 
-    helpmenu.add_command(label='Contact/Donations', command=open_donations)
+    def open_github():
+        webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')
+
+    contactmenu.add_command(label='Donations', command=open_donations)
+    contactmenu.add_command(label='GitHub Project', command=open_github)
+    helpmenu.add_cascade(label='Contact', menu=contactmenu)
+
     menubar.add_cascade(label='Help', menu=helpmenu)
     root.config(menu=menubar)
+
+    def show_donation_dialog():
+        dlg = tk.Toplevel(root)
+        dlg.title('Support ChirpScrape')
+        dlg.geometry('420x160')
+        dlg.grab_set()
+        tk.Label(dlg, text="Please help pay for the numerous accounts, interfaces and time that I have spent on ChirpScrape.", wraplength=400, justify='left', font=(None, 11)).pack(padx=18, pady=(18, 10))
+        btn_frame = tk.Frame(dlg)
+        btn_frame.pack(pady=(0, 16))
+
+        def close_dialog():
+            dlg.destroy()
+
+        def open_donate():
+            close_dialog()
+            open_donations()
+
+        tk.Button(btn_frame, text="Not Now", width=12, command=close_dialog).pack(side='left', padx=10)
+        tk.Button(btn_frame, text="Donate", width=12, command=open_donate).pack(side='left', padx=10)
+
+    # Show donation dialog on program open
+    root.after(100, show_donation_dialog)
 
     # Input entries (accept either full Radioreference URL or a ZIP code)
     input_vars = [tk.StringVar() for _ in range(4)]
@@ -482,12 +509,15 @@ def launch_gui_and_run(default_pages, output_path):
         rows = []
         for c, u in pages.items():
             for tup in scrape_rr(u):
-                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint])
-                    if len(tup) >= 5:
+                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint,desc])
+                    if len(tup) >= 6:
+                        name, f, tone, duplex_hint, offset_hint, desc = tup[0], tup[1], tup[2], tup[3], tup[4], tup[5]
+                    elif len(tup) >= 5:
                         name, f, tone, duplex_hint, offset_hint = tup[0], tup[1], tup[2], tup[3], tup[4]
+                        desc = ''
                     else:
                         name, f, tone = tup[0], tup[1], tup[2]
-                        duplex_hint, offset_hint = (None, None)
+                        duplex_hint, offset_hint, desc = (None, None, '')
                     # determine which band this frequency belongs to (first matching selected band)
                     band_label = None
                     for band in sel_bands:
@@ -659,7 +689,8 @@ def main():
                 "Tone":tone,
                 "Mode":"FM",
                 "Power":"High",
-                "Comment":c
+                # prefer RR entry description as comment, fall back to page label
+                "Comment": (desc or c)
             })
     for n,f in NOAA_FREQS:
         rows.append({"Name":n,"Frequency":f,
