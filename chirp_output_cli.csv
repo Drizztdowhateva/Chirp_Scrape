@@ -1,0 +1,47 @@
+Location,Name,Frequency,Duplex,Offset,Tone,Mode,Power,Comment
+WA9VGI,WA9VGI,442.975,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+American,American Red Cross Chicago Area Ham Operations,147.42,+,,146.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9GN,W9GN,145.11,-,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9GN,W9GN,145.11,-,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9DUP,W9DUP,145.13,-,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+WB9AET,WB9AET,146.67,-,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+SARA,SARA,146.88,-,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9AP,W9AP,147.09,+,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+KB9KRA,KB9KRA,147.105,+,,131.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9SRO,W9SRO,147.15,+,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9FO,W9FO,147.315,+,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+N9EP/R,N9EP/R,442.8,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W9PCS,W9PCS,442.875,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+KB9TAP,KB9TAP,443.175,+,,127.3 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+K9KNS,K9KNS,443.725,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+K9VMP/R,K9VMP/R,443.875,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+N9AWQ,N9AWQ,443.94375,+,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+AIRA,AIRA,443.975,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+SARA,SARA,444.375,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+CFMC,CFMC,146.76,-,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+D-STAR R,D-STAR Reflector 1C CFMC,441.90625,+,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+CFMC,CFMC,443.75,+,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+CFMC,CFMC,443.75,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NS9RC,NS9RC,145.61,-,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NS9RC,NS9RC,147.345,+,,107.2 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NS9RC,NS9RC,442.09375,+,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NS9RC,NS9RC,442.725,+,,114.8 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NA9PL,NA9PL,440.25,+,,67.0 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NA9PL,NA9PL,440.5,+,,67.0 PL,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+Voice,Voice,442.09375,+,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+APRS dig,"APRS digipeater, Northfield, IL",144.39,-,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+NS9RC,NS9RC,144.39,-,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+Winlink ,"Winlink  RMS Winlink Node, Glenview, IL",145.61,-,,,FM,High,https://www.radioreference.com/db/browse/ctid/606/ham
+W0ILO,W0ILO,145.35,-,,CSQ,FM,High,https://www.radioreference.com/db/browse/ctid/1323/ham
+W0QQK,W0QQK,146.685,-,,CSQ,FM,High,https://www.radioreference.com/db/browse/ctid/1323/ham
+WB0BIN,WB0BIN,146.895,-,,100.0 PL,FM,High,https://www.radioreference.com/db/browse/ctid/1323/ham
+KC0SD,KC0SD,147.06,+,,CSQ,FM,High,https://www.radioreference.com/db/browse/ctid/1323/ham
+W0ILO,W0ILO,444.875,+,,123.0 PL,FM,High,https://www.radioreference.com/db/browse/ctid/1323/ham
+WB0RMK,WB0RMK,147.165,+,,CSQ,FM,High,https://www.radioreference.com/db/browse/ctid/1319/ham
+NOAA,NOAA WX 1,162.4,,,,FM,,Weather
+NOAA,NOAA WX 2,162.425,,,,FM,,Weather
+NOAA,NOAA WX 3,162.45,,,,FM,,Weather
+NOAA,NOAA WX 4,162.475,,,,FM,,Weather
+NOAA,NOAA WX 5,162.5,,,,FM,,Weather
+NOAA,NOAA WX 6,162.525,,,,FM,,Weather
+NOAA,NOAA WX 7,162.55,,,,FM,,Weather
