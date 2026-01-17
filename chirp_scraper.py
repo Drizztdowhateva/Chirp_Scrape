@@ -60,12 +60,26 @@ try:
 except Exception:
     _TK_AVAILABLE = False
 
-VALID_BANDS = [(136.0,174.0),(400.0,520.0)]
-
 NOAA_FREQS = [
     ("NOAA WX 1",162.400),("NOAA WX 2",162.425),("NOAA WX 3",162.450),
     ("NOAA WX 4",162.475),("NOAA WX 5",162.500),("NOAA WX 6",162.525),
     ("NOAA WX 7",162.550)
+]
+
+# MURS fixed channels (5 channels)
+MURS_FREQS = [
+    ("MURS 1", 151.820),
+    ("MURS 2", 151.880),
+    ("MURS 3", 151.940),
+    ("MURS 4", 154.570),
+    ("MURS 5", 154.600),
+]
+
+# FRS/GMRS combined channel chart (22 channels) — include common GMRS channels
+GMRS_FREQS = [
+    ("GMRS 1", 462.5625),("GMRS 2", 462.5875),("GMRS 3", 462.6125),("GMRS 4", 462.6375),("GMRS 5", 462.6625),("GMRS 6", 462.6875),("GMRS 7", 462.7125),
+    ("GMRS 8", 467.5625),("GMRS 9", 467.5875),("GMRS 10", 467.6125),("GMRS 11", 467.6375),("GMRS 12", 467.6625),("GMRS 13", 467.6875),("GMRS 14", 467.7125),
+    ("GMRS 15", 462.5500),("GMRS 16", 462.5750),("GMRS 17", 462.6000),("GMRS 18", 462.6250),("GMRS 19", 462.6500),("GMRS 20", 462.6750),("GMRS 21", 462.7000),("GMRS 22", 462.7250),
 ]
 
 DEFAULT_PAGES = {
@@ -78,11 +92,20 @@ BAND_RANGES = {
     'MURS': [(151.82, 154.6)],
     'GMRS': [(462.0, 467.0)],
     'Simplex': [(136.0, 174.0), (400.0, 520.0)],
-    'Repeaters': [(136.0, 174.0), (400.0, 520.0)],
 }
 
+# Consolidate valid frequency bands from BAND_RANGES so MURS/GMRS/NOAA are included
+VALID_BANDS = []
+for ranges in BAND_RANGES.values():
+    for lo, hi in ranges:
+        VALID_BANDS.append((float(lo), float(hi)))
+
 def valid_freq(f):
-    return any(lo<=f<=hi for lo,hi in VALID_BANDS)
+    try:
+        fv = float(f)
+    except Exception:
+        return False
+    return any(lo <= fv <= hi for lo, hi in VALID_BANDS)
 
 def scrape_rr(url):
     headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"}
@@ -143,7 +166,7 @@ def scrape_rr(url):
             except Exception:
                 pass
 
-                out.append((name, f, tone, duplex_hint, offset_hint, desc))
+            out.append((name, f, tone, duplex_hint, offset_hint))
     return out
 
 def get_pages_from_user():
@@ -300,6 +323,10 @@ def launch_gui_and_run(default_pages, output_path):
     root = tk.Tk()
     root.title('CHIRP RR Scraper')
 
+    # Make window wider to fit controls and right-hand content
+    root.geometry('1100x700')
+    root.minsize(900, 600)
+
     menubar = tk.Menu(root)
     helpmenu = tk.Menu(menubar, tearoff=0)
 
@@ -319,6 +346,42 @@ def launch_gui_and_run(default_pages, output_path):
 
     menubar.add_cascade(label='Help', menu=helpmenu)
     root.config(menu=menubar)
+
+    # Right-hand area: show donation QR image / project link
+    try:
+        # Ensure media directory exists
+        media_dir = os.path.join(os.path.dirname(__file__), 'media')
+        os.makedirs(media_dir, exist_ok=True)
+        qr_path = os.path.join(media_dir, 'paypal_qr.png')
+        # Download QR image if not present
+        if not os.path.exists(qr_path):
+            img_url = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https%3A%2F%2Fpaypal.me%2FDr1zztD'
+            try:
+                resp = requests.get(img_url, timeout=10)
+                if resp.status_code == 200:
+                    with open(qr_path, 'wb') as _f:
+                        _f.write(resp.content)
+            except Exception:
+                qr_path = None
+        # Load and display image if available
+        if os.path.exists(qr_path):
+            try:
+                qr_img = tk.PhotoImage(file=qr_path)
+                right_frame = tk.Frame(root)
+                right_frame.grid(row=0, column=3, rowspan=20, sticky='n', padx=12, pady=12)
+                lbl_img = tk.Label(right_frame, image=qr_img)
+                lbl_img.image = qr_img
+                lbl_img.pack()
+                tk.Label(right_frame, text='Donate / Contact', font=(None, 12, 'bold')).pack(pady=(8,0))
+                tk.Label(right_frame, text='Click Help → Contact → Donations', wraplength=260, justify='center').pack(pady=(6,0))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # make columns resize nicely
+    root.grid_columnconfigure(1, weight=1)
+    root.grid_columnconfigure(2, weight=0)
 
     def show_donation_dialog():
         dlg = tk.Toplevel(root)
@@ -509,15 +572,12 @@ def launch_gui_and_run(default_pages, output_path):
         rows = []
         for c, u in pages.items():
             for tup in scrape_rr(u):
-                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint,desc])
-                    if len(tup) >= 6:
-                        name, f, tone, duplex_hint, offset_hint, desc = tup[0], tup[1], tup[2], tup[3], tup[4], tup[5]
-                    elif len(tup) >= 5:
+                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint])
+                    if len(tup) >= 5:
                         name, f, tone, duplex_hint, offset_hint = tup[0], tup[1], tup[2], tup[3], tup[4]
-                        desc = ''
                     else:
                         name, f, tone = tup[0], tup[1], tup[2]
-                        duplex_hint, offset_hint, desc = (None, None, '')
+                        duplex_hint, offset_hint = (None, None)
                     # determine which band this frequency belongs to (first matching selected band)
                     band_label = None
                     for band in sel_bands:
@@ -539,6 +599,16 @@ def launch_gui_and_run(default_pages, output_path):
         if 'NOAA' in sel_bands:
             for n, f in NOAA_FREQS:
                 rows.append({'Name': n, 'Frequency': f, 'Duplex': '', 'Tone': '', 'Comment': 'Weather', 'Band': 'NOAA'})
+
+        # If MURS selected, include fixed MURS channels
+        if 'MURS' in sel_bands:
+            for n, f in MURS_FREQS:
+                rows.append({'Name': n, 'Frequency': f, 'Duplex': '', 'Tone': '', 'Comment': 'MURS', 'Band': 'MURS'})
+
+        # If GMRS selected, include fixed GMRS/FRS channels
+        if 'GMRS' in sel_bands:
+            for n, f in GMRS_FREQS:
+                rows.append({'Name': n, 'Frequency': f, 'Duplex': '', 'Tone': '', 'Comment': 'GMRS/FRS', 'Band': 'GMRS'})
 
         # sort rows by band order then frequency
         band_order = {b: i for i, b in enumerate(sel_bands)}
@@ -573,8 +643,8 @@ def launch_gui_and_run(default_pages, output_path):
             name = r.get('Name','')
             freq = r.get('Frequency','')
             band = r.get('Band','')
-            # Repeaters are duplex by design
-            duplex = '+' if band == 'Repeaters' or (isinstance(freq, (int,float)) and freq >= 147) else '-' if isinstance(freq, (int,float)) and freq < 147 else ''
+            # Determine duplex: use frequency heuristic (>=147 -> +) rather than a 'Repeaters' band
+            duplex = '+' if (isinstance(freq, (int,float)) and freq >= 147) else '-' if isinstance(freq, (int,float)) and freq < 147 else ''
             offset = compute_offset_local(freq) if duplex == '+' else ''
             tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
             dtcs = '023' if rTone else ''
@@ -689,8 +759,7 @@ def main():
                 "Tone":tone,
                 "Mode":"FM",
                 "Power":"High",
-                # prefer RR entry description as comment, fall back to page label
-                "Comment": (desc or c)
+                "Comment":c
             })
     for n,f in NOAA_FREQS:
         rows.append({"Name":n,"Frequency":f,
