@@ -1,14 +1,6 @@
 # Local virtual environment
 .venv/
 
-# Moved/unused files directory
-Unused_Files/
-
-# Build outputs
-build/
-AppDir/
-dist/
-
 # Python cache
 __pycache__/
 *.pyc
