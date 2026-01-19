@@ -1,0 +1,18 @@
+# Local virtual environment
+.venv/
+
+# Moved/unused files directory
+Unused_Files/
+
+# Build outputs
+build/
+AppDir/
+dist/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local output files
+chirp_output.csv
+chirp_output_*.csv
