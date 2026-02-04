@@ -1,0 +1,10 @@
+# Local virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local output files
+chirp_output.csv
+chirp_output_*.csv
