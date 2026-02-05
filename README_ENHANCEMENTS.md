@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-ChirpScrape has been significantly enhanced with **professional-grade radio model support**, **comprehensive customization options**, **customer service features**, and **extensive user guidance**. The application now supports 5 radio models (including the Anytone DM32UV), 4 quality tiers, and features a complete tooltip system and interactive Getting Started guide.
+ChirpScrape has been significantly enhanced with **professional-grade radio model support**, **comprehensive customization options**, **customer service features**, **extensive user guidance**, and **improved donation experience**. The application now supports 5 radio models (including the Anytone DM32UV), 4 quality tiers, features a complete tooltip system, interactive Getting Started guide, and a professionally-styled donation portal.
 
-**Status**: ✅ **PRODUCTION READY** | **Fully Backward Compatible** | **1954 Total Lines**
+**Status**: ✅ **PRODUCTION READY** | **Fully Backward Compatible** | **1958 Total Lines**
 
 ---
 
@@ -101,6 +101,20 @@ Help → Getting Started ⭐ NEW, RadioReference, How-To, Contact
 - Helpful error messages
 - Support link access (GitHub, Donations)
 - Feature documentation within app
+
+### 11. **Professional Donation Portal** ⭐ NEW
+- **Modern Gradient UI**: Professional purple gradient design
+- **Always-on-Top Dialog**: Donation dialog stays in focus on app launch
+- **Responsive Design**: Text automatically fits window on all screen sizes
+- **Clickable Donation Links**: PayPal and Cash App links with 💵 emoji
+- **Mobile Friendly**: Optimized for desktop and mobile browsers
+- **Professional Typography**: Clean, modern fonts and spacing
+- **Smooth Interactions**: Hover effects and transitions on all buttons
+- **Email Contact**: Easy access to support email
+
+**Location**: 
+- Dialog: Lines 1289-1311 in `chirp_scraper.py` 
+- Portal: `media/index.html` (complete redesign)
 
 ---
 
@@ -209,6 +223,14 @@ Help → Getting Started ⭐ NEW, RadioReference, How-To, Contact
 ---
 
 ## 💡 Key Features for Customer Service
+
+### **Donation Experience**
+- **Professional Portal**: Modern design with gradient background
+- **Always-On-Top Dialog**: Initial dialog stays in focus until closed
+- **Responsive Content**: All text fits the window properly
+- **Direct Links**: Click to donate via PayPal or Cash App with 💵 emoji
+- **Email Support**: Quick contact option for questions
+- **Non-intrusive**: Can be dismissed with "Not Now" button
 
 ### **Getting Started Guide**
 - Interactive tutorial accessible from Help menu
@@ -322,6 +344,7 @@ preferences_data = {
 | Radio Models Supported | 5 |
 | Quality Levels | 4 |
 | Documentation Files | 4 |
+| Donation Portal Redesign | 1 (HTML + CSS) |
 | Backward Compatible | 100% |
 | Syntax Errors | 0 |
 
@@ -386,3 +409,13 @@ This enhancement represents a significant improvement to ChirpScrape's user expe
 **Status**: ✅ Complete and Ready for Production  
 **Compatibility**: 100% Backward Compatible  
 **Quality**: Professional Grade
+
+## 🔄 Latest Updates (February 4, 2026)
+
+### Donation Dialog & Portal Improvements
+- **Always-On-Top Dialog**: Dialog now stays in focus when app launches using `dlg.attributes('-topmost', True)`
+- **Professional Styling**: Completely redesigned HTML donation portal with modern gradient UI
+- **Responsive Text**: All content automatically fits in the donation window
+- **Clickable Links**: Direct donation links with 💵 emoji for PayPal and Cash App
+- **Mobile Optimized**: Responsive design works on all device sizes
+- **Better UX**: Smooth hover effects, professional typography, and visual hierarchy

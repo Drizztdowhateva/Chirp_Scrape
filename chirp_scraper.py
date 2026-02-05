@@ -242,8 +242,8 @@ RADIO_MODELS = {
         'digital_capabilities': True,
         'description': 'DMR dual-mode digital/analog with extended features'
     },
-    'Baofeng': {
-        'name': 'Baofeng UV-5R/UV-82',
+    'Baofeng_UV5R': {
+        'name': 'Baofeng UV-5R',
         'supports_tone': True,
         'supports_dtcs': True,
         'supports_duplex': True,
@@ -254,7 +254,35 @@ RADIO_MODELS = {
         'supports_comment': True,
         'max_channels': 128,
         'tone_frequencies': True,
-        'description': 'Popular budget dual-band UHF/VHF handheld'
+        'description': 'Popular budget dual-band UHF/VHF handheld - Full size'
+    },
+    'Baofeng_UV5R_Mini': {
+        'name': 'Baofeng UV-5R Mini',
+        'supports_tone': True,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'max_channels': 128,
+        'tone_frequencies': True,
+        'description': 'Compact dual-band UHF/VHF handheld - Smaller size variant'
+    },
+    'Baofeng_UV82': {
+        'name': 'Baofeng UV-82',
+        'supports_tone': True,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'max_channels': 128,
+        'tone_frequencies': True,
+        'description': 'Rugged dual-band UHF/VHF handheld - Waterproof variant'
     },
     'Motorola': {
         'name': 'Motorola (Professional)',
@@ -330,6 +358,40 @@ CUSTOMIZATION_LEVELS = {
         'add_metadata': True,
         'description': 'Maximum quality with all optimization features'
     }
+}
+
+# Application Settings for Startup and Safety
+APP_SETTINGS = {
+    'text_startup': {
+        'default': False,
+        'label': 'Text Mode Startup (CLI)',
+        'description': 'Start in text/command-line mode instead of GUI'
+    },
+    'disable_startup_tips': {
+        'default': False,
+        'label': 'Disable Startup Tips',
+        'description': 'Skip the Getting Started guide on launch'
+    },
+    'confirm_export': {
+        'default': True,
+        'label': 'Confirm Before Export',
+        'description': 'Ask for confirmation before exporting channels'
+    },
+    'backup_before_save': {
+        'default': True,
+        'label': 'Auto Backup Before Save',
+        'description': 'Automatically backup CSV files before overwriting'
+    },
+    'safe_frequency_check': {
+        'default': True,
+        'label': 'Enable Safe Frequency Validation',
+        'description': 'Validate all frequencies against band limits'
+    },
+    'warn_channel_limit': {
+        'default': True,
+        'label': 'Warn When Exceeding Channel Limit',
+        'description': 'Alert when imported channels exceed radio capacity'
+    },
 }
 
 # Consolidate valid frequency bands from BAND_RANGES so MURS/GMRS/NOAA are included
@@ -860,7 +922,7 @@ def launch_gui_and_run(default_pages, output_path):
             ('🔧 Quality Levels',
              '• Default: Essential features\n• Standard: Extended features + deduplication\n• Advanced: Power user features\n• High Quality: Maximum optimization'),
             ('📱 Radio Models',
-             'ChirpScrape supports:\n• Generic (all CHIRP radios)\n• DM32UV (DMR + analog)\n• Baofeng (UV-5R/UV-82)\n• Motorola (Professional)\n• Kenwood (VHF/UHF)'),
+             'ChirpScrape supports:\n• Generic (all CHIRP radios)\n• DM32UV (DMR + analog)\n• Baofeng UV-5R / UV-5R Mini / UV-82\n• Motorola (Professional)\n• Kenwood (VHF/UHF)'),
             ('💡 Tips',
              '• Hover over elements for helpful tips\n• RadioReference has the most complete data\n• Check Help > RadioReference for frequency info\n• Contact GitHub for support/issues'),
         ]
@@ -922,6 +984,85 @@ def launch_gui_and_run(default_pages, output_path):
     contactmenu.add_command(label='Donations', command=open_donations)
     contactmenu.add_command(label='GitHub Project', command=open_github)
     helpmenu.add_cascade(label='Contact', menu=contactmenu)
+    
+    # Firmware submenu
+    firmwaremenu = tk.Menu(helpmenu, tearoff=0)
+    
+    def open_baofeng_unlock():
+        webbrowser.open('https://www.miklor.com/COM/UV5R_Unlock.php')
+    
+    def open_baofeng_unlock_guide():
+        webbrowser.open('https://www.miklor.com/COM/UV5R.php')
+    
+    def open_chirp_firmware():
+        webbrowser.open('https://chirp.danplanet.com/')
+    
+    def open_firmware_resources():
+        resources_window = tk.Toplevel(root)
+        resources_window.title('Firmware Unlock Resources')
+        resources_window.geometry('700x500')
+        resources_window.resizable(True, True)
+        
+        # Center on parent
+        resources_window.update_idletasks()
+        x = root.winfo_x() + (root.winfo_width() - 700) // 2
+        y = root.winfo_y() + (root.winfo_height() - 500) // 2
+        resources_window.geometry(f'+{x}+{y}')
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(resources_window)
+        scrollbar = ttk.Scrollbar(resources_window, orient='vertical', command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            '<Configure>',
+            lambda e: canvas.configure(scrollregion=canvas.bbox('all'))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor='nw')
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Content
+        title = tk.Label(scrollable_frame, text='Firmware Unlock & Upgrade Resources', 
+                        font=('Arial', 12, 'bold'), justify='left')
+        title.pack(anchor='w', padx=15, pady=(10, 15))
+        
+        resources = [
+            ('Baofeng UV-5R Unlock', 'Miklor.com - Complete UV-5R unlock and modification guide', 
+             open_baofeng_unlock),
+            ('Baofeng Full Guide', 'Miklor.com - Full UV-5R technical documentation and tricks',
+             open_baofeng_unlock_guide),
+            ('CHIRP Firmware', 'CHIRP official firmware database and radio programming tool',
+             open_chirp_firmware),
+        ]
+        
+        for title_text, desc, cmd in resources:
+            btn = tk.Button(scrollable_frame, text=title_text, command=cmd, 
+                           bg='#0066cc', fg='white', width=40, font=('Arial', 10, 'bold'))
+            btn.pack(anchor='w', padx=15, pady=(5, 2))
+            
+            desc_label = tk.Label(scrollable_frame, text=desc, font=('Arial', 9), 
+                                 justify='left', wraplength=650, fg='#666666')
+            desc_label.pack(anchor='w', padx=35, pady=(0, 12))
+        
+        info_frame = tk.Frame(scrollable_frame, bg='#f0f0f0', relief='solid', borderwidth=1)
+        info_frame.pack(fill='x', padx=15, pady=(15, 0))
+        
+        info_text = tk.Label(info_frame, text='⚠️ Warning: Unlocking firmware may void warranty. Always backup before modifications.',
+                            font=('Arial', 9), fg='#cc0000', bg='#f0f0f0', justify='left', wraplength=650)
+        info_text.pack(padx=10, pady=10)
+        
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+    
+    firmwaremenu.add_command(label='Firmware Unlock Guide', command=open_firmware_resources)
+    firmwaremenu.add_separator()
+    firmwaremenu.add_command(label='Baofeng UV-5R Unlock (Miklor)', command=open_baofeng_unlock)
+    firmwaremenu.add_command(label='Baofeng Full Guide (Miklor)', command=open_baofeng_unlock_guide)
+    firmwaremenu.add_separator()
+    firmwaremenu.add_command(label='CHIRP Firmware Database', command=open_chirp_firmware)
+    helpmenu.add_cascade(label='Firmware', menu=firmwaremenu)
+    
     # SOAP Debug submenu
     def open_soap_debug():
         dlg = tk.Toplevel(root)
@@ -1083,59 +1224,59 @@ def launch_gui_and_run(default_pages, output_path):
     def open_preferences():
         pref_window = tk.Toplevel(root)
         pref_window.title('Preferences')
-        pref_window.geometry('600x550')
+        pref_window.geometry('750x650')
+        pref_window.minsize(700, 600)
         pref_window.grab_set()
         
         # Center preferences window on parent
         pref_window.update_idletasks()
-        x = root.winfo_x() + (root.winfo_width() - 600) // 2
-        y = root.winfo_y() + (root.winfo_height() - 550) // 2
+        x = root.winfo_x() + (root.winfo_width() - 750) // 2
+        y = root.winfo_y() + (root.winfo_height() - 650) // 2
         pref_window.geometry(f'+{x}+{y}')
         
         # Title
         title_frame = tk.Frame(pref_window)
         title_frame.pack(fill='x', padx=15, pady=(15, 10))
-        tk.Label(title_frame, text='Radio & Export Preferences', font=('Arial', 14, 'bold')).pack()
+        tk.Label(title_frame, text='Application Preferences', font=('Arial', 14, 'bold')).pack()
         
-        # Model Selection Frame
-        model_frame = tk.LabelFrame(pref_window, text='Radio Model Selection', padx=15, pady=12, font=('Arial', 11))
-        model_frame.pack(fill='x', padx=15, pady=(10, 15))
+        # Create notebook (tabbed interface)
+        notebook = ttk.Notebook(pref_window)
+        notebook.pack(fill='both', expand=True, padx=15, pady=(10, 15))
         
-        tk.Label(model_frame, text='Select Your Radio:', font=('Arial', 10)).pack(anchor='w')
+        # ===== TAB 1: RADIO MODELS =====
+        radio_frame = ttk.Frame(notebook)
+        notebook.add(radio_frame, text='📻 Radio Models')
+        
+        # Create scrollable content for radio frame
+        radio_canvas = tk.Canvas(radio_frame)
+        radio_scrollbar = ttk.Scrollbar(radio_frame, orient='vertical', command=radio_canvas.yview)
+        radio_scrollable_frame = tk.Frame(radio_canvas)
+        
+        radio_scrollable_frame.bind(
+            '<Configure>',
+            lambda e: radio_canvas.configure(scrollregion=radio_canvas.bbox('all'))
+        )
+        
+        radio_canvas.create_window((0, 0), window=radio_scrollable_frame, anchor='nw')
+        radio_canvas.configure(yscrollcommand=radio_scrollbar.set)
+        
+        tk.Label(radio_scrollable_frame, text='Select Your Radio Model:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 5))
         model_var = tk.StringVar(value=preferences_data['selected_model'].get())
         
-        model_combo = ttk.Combobox(model_frame, textvariable=model_var, state='readonly', width=35)
+        model_combo = ttk.Combobox(radio_scrollable_frame, textvariable=model_var, state='readonly', width=40)
         model_combo['values'] = [RADIO_MODELS[m]['name'] for m in RADIO_MODELS.keys()]
-        model_combo.pack(fill='x', pady=(5, 10))
-        
-        # Add tooltip for model selection
-        def create_tooltip(widget, text):
-            def on_enter(event):
-                tooltip = tk.Toplevel(widget)
-                tooltip.wm_overrideredirect(True)
-                tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
-                label = tk.Label(tooltip, text=text, background='#ffffe0', relief='solid', borderwidth=1, font=('Arial', 9))
-                label.pack()
-                widget.tooltip = tooltip
-            def on_leave(event):
-                if hasattr(widget, 'tooltip'):
-                    widget.tooltip.destroy()
-                    del widget.tooltip
-            widget.bind('<Enter>', on_enter)
-            widget.bind('<Leave>', on_leave)
+        model_combo.pack(fill='x', padx=10, pady=(5, 10))
         
         # Model description
         model_desc_var = tk.StringVar(value=RADIO_MODELS['Generic']['description'])
-        desc_label = tk.Label(model_frame, textvariable=model_desc_var, wraplength=550, justify='left', foreground='#666666', font=('Arial', 9))
-        desc_label.pack(anchor='w', pady=(0, 10))
+        desc_label = tk.Label(radio_scrollable_frame, textvariable=model_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
+        desc_label.pack(anchor='w', padx=10, pady=(0, 15))
         
         # Model features display
-        features_frame = tk.Frame(model_frame)
-        features_frame.pack(fill='x', pady=(10, 0))
-        tk.Label(features_frame, text='Supported Features:', font=('Arial', 9, 'bold')).pack(anchor='w')
+        tk.Label(radio_scrollable_frame, text='Supported Features:', font=('Arial', 9, 'bold')).pack(anchor='w', padx=10, pady=(5, 5))
         
-        features_text = tk.Text(features_frame, height=6, width=65, state='disabled', bg='#f5f5f5', relief='flat', padx=8, pady=6)
-        features_text.pack(fill='both', expand=True)
+        features_text = tk.Text(radio_scrollable_frame, height=10, width=85, state='disabled', bg='#f5f5f5', relief='solid', padx=8, pady=6)
+        features_text.pack(fill='both', expand=True, padx=10, pady=(0, 10))
         
         def update_model_display(*args):
             selected_name = model_var.get()
@@ -1167,23 +1308,45 @@ def launch_gui_and_run(default_pages, output_path):
                     features.append('✓ DMR Timeslot')
                 if model_info.get('supports_digital_mode'):
                     features.append('✓ Digital Mode')
-                features.append(f'\nMax Channels: {model_info.get("max_channels", "N/A")}')
+                if model_info.get('supports_skip'):
+                    features.append('✓ Skip Flag')
+                if model_info.get('supports_mode'):
+                    features.append('✓ Mode Selection')
+                if model_info.get('supports_step'):
+                    features.append('✓ Step Sizes')
+                features.append(f'\n📊 Max Channels: {model_info.get("max_channels", "N/A")}')
                 features_text.insert('end', '\n'.join(features))
                 features_text.config(state='disabled')
         
         model_combo.bind('<<ComboboxSelected>>', update_model_display)
         update_model_display()  # Initial display
         
-        # Customization Level Frame
-        custom_frame = tk.LabelFrame(pref_window, text='Export Quality & Customization', padx=15, pady=12, font=('Arial', 11))
-        custom_frame.pack(fill='x', padx=15, pady=(0, 15))
+        radio_canvas.pack(side='left', fill='both', expand=True)
+        radio_scrollbar.pack(side='right', fill='y')
         
-        tk.Label(custom_frame, text='Choose Export Quality Level:', font=('Arial', 10)).pack(anchor='w')
+        # ===== TAB 2: EXPORT QUALITY =====
+        export_frame = ttk.Frame(notebook)
+        notebook.add(export_frame, text='⚙️ Export Quality')
+        
+        # Create scrollable content for export frame
+        export_canvas = tk.Canvas(export_frame)
+        export_scrollbar = ttk.Scrollbar(export_frame, orient='vertical', command=export_canvas.yview)
+        export_scrollable_frame = tk.Frame(export_canvas)
+        
+        export_scrollable_frame.bind(
+            '<Configure>',
+            lambda e: export_canvas.configure(scrollregion=export_canvas.bbox('all'))
+        )
+        
+        export_canvas.create_window((0, 0), window=export_scrollable_frame, anchor='nw')
+        export_canvas.configure(yscrollcommand=export_scrollbar.set)
+        
+        tk.Label(export_scrollable_frame, text='Choose Export Quality Level:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 5))
         custom_var = tk.StringVar(value=preferences_data['customization_level'].get())
         
         # Create radio buttons for customization levels
-        levels_frame = tk.Frame(custom_frame)
-        levels_frame.pack(fill='x', pady=(10, 0))
+        levels_frame = tk.Frame(export_scrollable_frame)
+        levels_frame.pack(fill='x', padx=10, pady=(10, 0))
         
         custom_desc_var = tk.StringVar(value=CUSTOMIZATION_LEVELS['Default']['description'])
         
@@ -1193,20 +1356,19 @@ def launch_gui_and_run(default_pages, output_path):
                 custom_desc_var.set(CUSTOMIZATION_LEVELS[selected_level]['description'])
         
         for level in ['Default', 'Standard', 'Advanced', 'High Quality']:
-            rb = tk.Radiobutton(levels_frame, text=level, variable=custom_var, value=level, command=on_custom_change)
-            rb.pack(anchor='w', pady=4)
+            rb = tk.Radiobutton(levels_frame, text=level, variable=custom_var, value=level, command=on_custom_change, font=('Arial', 10))
+            rb.pack(anchor='w', pady=6)
         
         custom_var.trace_add('write', on_custom_change)
         
-        custom_desc_label = tk.Label(custom_frame, textvariable=custom_desc_var, wraplength=550, justify='left', foreground='#666666', font=('Arial', 9))
-        custom_desc_label.pack(anchor='w', pady=(10, 0))
+        custom_desc_label = tk.Label(export_scrollable_frame, textvariable=custom_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
+        custom_desc_label.pack(anchor='w', padx=10, pady=(15, 10))
         
         # Details for each level
-        details_frame = tk.Frame(custom_frame)
-        details_frame.pack(fill='both', expand=True, pady=(10, 0))
+        tk.Label(export_scrollable_frame, text='Features in Selected Quality Level:', font=('Arial', 9, 'bold')).pack(anchor='w', padx=10, pady=(5, 5))
         
-        details_text = tk.Text(details_frame, height=8, width=65, state='disabled', bg='#f5f5f5', relief='flat', padx=8, pady=6)
-        details_text.pack(fill='both', expand=True)
+        details_text = tk.Text(export_scrollable_frame, height=10, width=85, state='disabled', bg='#f5f5f5', relief='solid', padx=8, pady=6)
+        details_text.pack(fill='both', expand=True, padx=10, pady=(0, 10))
         
         def update_level_details(*args):
             selected_level = custom_var.get()
@@ -1225,21 +1387,106 @@ def launch_gui_and_run(default_pages, output_path):
         custom_var.trace_add('write', update_level_details)
         update_level_details()  # Initial display
         
-        # Buttons
+        export_canvas.pack(side='left', fill='both', expand=True)
+        export_scrollbar.pack(side='right', fill='y')
+        
+        # ===== TAB 3: SAFETY & STARTUP =====
+        safety_frame = ttk.Frame(notebook)
+        notebook.add(safety_frame, text='🛡️ Safety & Startup')
+        
+        # Create scrollable content for safety frame
+        safety_canvas = tk.Canvas(safety_frame)
+        safety_scrollbar = ttk.Scrollbar(safety_frame, orient='vertical', command=safety_canvas.yview)
+        safety_scrollable_frame = tk.Frame(safety_canvas)
+        
+        safety_scrollable_frame.bind(
+            '<Configure>',
+            lambda e: safety_canvas.configure(scrollregion=safety_canvas.bbox('all'))
+        )
+        
+        safety_canvas.create_window((0, 0), window=safety_scrollable_frame, anchor='nw')
+        safety_canvas.configure(yscrollcommand=safety_scrollbar.set)
+        
+        safety_vars = {}
+        
+        tk.Label(safety_scrollable_frame, text='Startup & Safety Options:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 10))
+        
+        for key, setting in APP_SETTINGS.items():
+            var = tk.BooleanVar(value=setting['default'])
+            safety_vars[key] = var
+            
+            cb = tk.Checkbutton(safety_scrollable_frame, text=setting['label'], variable=var, font=('Arial', 10))
+            cb.pack(anchor='w', padx=10, pady=4)
+            
+            desc = tk.Label(safety_scrollable_frame, text=setting['description'], font=('Arial', 8), fg='#666666', wraplength=700, justify='left')
+            desc.pack(anchor='w', padx=30, pady=(0, 8))
+        
+        safety_canvas.pack(side='left', fill='both', expand=True)
+        safety_scrollbar.pack(side='right', fill='y')
+        
+        # ===== TAB 4: ADVANCED TWEAKS =====
+        tweaks_frame = ttk.Frame(notebook)
+        notebook.add(tweaks_frame, text='🔧 Advanced Tweaks')
+        
+        # Create scrollable content for tweaks frame
+        tweaks_canvas = tk.Canvas(tweaks_frame)
+        tweaks_scrollbar = ttk.Scrollbar(tweaks_frame, orient='vertical', command=tweaks_canvas.yview)
+        tweaks_scrollable_frame = tk.Frame(tweaks_canvas)
+        
+        tweaks_scrollable_frame.bind(
+            '<Configure>',
+            lambda e: tweaks_canvas.configure(scrollregion=tweaks_canvas.bbox('all'))
+        )
+        
+        tweaks_canvas.create_window((0, 0), window=tweaks_scrollable_frame, anchor='nw')
+        tweaks_canvas.configure(yscrollcommand=tweaks_scrollbar.set)
+        
+        tk.Label(tweaks_scrollable_frame, text='Frequency Validation Settings:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 10))
+        
+        tweak_vars = {}
+        tweaks_config = {
+            'strict_freq_check': {'label': 'Strict Frequency Checking', 'description': 'Reject any frequency outside defined bands'},
+            'auto_step_optimize': {'label': 'Auto-optimize Step Sizes', 'description': 'Automatically adjust step sizes to radio capabilities'},
+            'filter_narrow_band': {'label': 'Filter Narrow Band Only', 'description': 'Include narrow-band (FM-N) mode frequencies'},
+            'sort_output': {'label': 'Sort Output by Frequency', 'description': 'Automatically sort channels by frequency in output'},
+            'remove_all_dups': {'label': 'Aggressive Duplicate Removal', 'description': 'Remove near-duplicate frequencies within 5 kHz'},
+        }
+        
+        for key, config in tweaks_config.items():
+            var = tk.BooleanVar(value=False)
+            tweak_vars[key] = var
+            
+            cb = tk.Checkbutton(tweaks_scrollable_frame, text=config['label'], variable=var, font=('Arial', 10))
+            cb.pack(anchor='w', padx=10, pady=4)
+            
+            desc = tk.Label(tweaks_scrollable_frame, text=config['description'], font=('Arial', 8), fg='#666666', wraplength=700, justify='left')
+            desc.pack(anchor='w', padx=30, pady=(0, 8))
+        
+        tweaks_canvas.pack(side='left', fill='both', expand=True)
+        tweaks_scrollbar.pack(side='right', fill='y')
+        
+        # ===== Buttons at bottom =====
         button_frame = tk.Frame(pref_window)
-        button_frame.pack(fill='x', padx=15, pady=(10, 15))
+        button_frame.pack(fill='x', padx=15, pady=(0, 15))
         
         def on_apply():
             preferences_data['selected_model'].set(model_var.get())
             preferences_data['customization_level'].set(custom_var.get())
+            # Store safety/startup settings
+            for key, var in safety_vars.items():
+                APP_SETTINGS[key]['value'] = var.get()
+            # Store tweak settings
+            for key, var in tweak_vars.items():
+                tweaks_config[key]['value'] = var.get()
             pref_window.destroy()
-            messagebox.showinfo('Preferences', f'Model set to {model_var.get()}\nQuality: {custom_var.get()}')
+            messagebox.showinfo('Preferences', f'✓ Settings saved!\nRadio Model: {model_var.get()}\nQuality Level: {custom_var.get()}')
         
         def on_cancel():
             pref_window.destroy()
         
-        tk.Button(button_frame, text='Apply', command=on_apply, bg='#4CAF50', fg='white', width=12).pack(side='right', padx=5)
-        tk.Button(button_frame, text='Cancel', command=on_cancel, width=12).pack(side='right', padx=5)
+        tk.Button(button_frame, text='✓ Apply', command=on_apply, bg='#4CAF50', fg='white', width=12, font=('Arial', 10)).pack(side='right', padx=5)
+        tk.Button(button_frame, text='Cancel', command=on_cancel, width=12, font=('Arial', 10)).pack(side='right', padx=5)
+
     
     prefmenu = tk.Menu(menubar, tearoff=0)
     prefmenu.add_command(label='Radio & Export Settings', command=open_preferences)
@@ -1289,9 +1536,14 @@ def launch_gui_and_run(default_pages, output_path):
     def show_donation_dialog():
         dlg = tk.Toplevel(root)
         dlg.title('Support ChirpScrape')
-        dlg.geometry('420x160')
+        dlg.geometry('450x180')
         dlg.grab_set()
-        tk.Label(dlg, text="Please help pay for the numerous accounts, interfaces and time that I have spent on ChirpScrape.", wraplength=400, justify='left', font=(None, 11)).pack(padx=18, pady=(18, 10))
+        dlg.transient(root)
+        dlg.resizable(False, False)
+        dlg.lift()
+        dlg.focus()
+        dlg.attributes('-topmost', True)
+        tk.Label(dlg, text="Please help pay for the numerous accounts, interfaces and time that I have spent on ChirpScrape.", wraplength=410, justify='left', font=(None, 11)).pack(padx=20, pady=(18, 10))
         btn_frame = tk.Frame(dlg)
         btn_frame.pack(pady=(0, 16))
 
@@ -1299,14 +1551,14 @@ def launch_gui_and_run(default_pages, output_path):
             dlg.destroy()
 
         def open_donate():
-            close_dialog()
+            dlg.destroy()
             open_donations()
 
         tk.Button(btn_frame, text="Not Now", width=12, command=close_dialog).pack(side='left', padx=10)
         tk.Button(btn_frame, text="Donate", width=12, command=open_donate).pack(side='left', padx=10)
 
     # Show donation dialog on program open
-    root.after(100, show_donation_dialog)
+    root.after(500, show_donation_dialog)
 
     # Create a reusable tooltip class for better user guidance
     class ToolTip:

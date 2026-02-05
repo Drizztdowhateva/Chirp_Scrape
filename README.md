@@ -7,6 +7,8 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 **If `radioref.csv` is missing or outdated, please see the [Troubleshooting](#troubleshooting) section below.**
 
+**📚 Documentation**: See [README_ENHANCEMENTS.md](README_ENHANCEMENTS.md) for complete feature documentation, and [CHANGELOG.md](CHANGELOG.md) for version history and updates.
+
 ## Quick Start
 
 1. **One-step bootstrap (recommended)**
@@ -70,6 +72,8 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 ## Donations
 
 Developing and maintaining open source software takes significant time and resources. Your support helps cover development, testing, and hosting costs. Every contribution makes a difference!
+
+**🎁 Donation Portal**: A professional donation page appears on first launch. You can dismiss it and access it anytime via **Help → Contact → Donations** in the app menu.
 
 **Thank you for considering a donation!**
 

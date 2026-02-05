@@ -3,134 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tim Rohe - Home</title>
+    <title>Support ChirpScrape Development</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
-            font-family: Arial, sans-serif;
-            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             padding: 20px;
-            background-color: #f4f4f4;
         }
-        h1 {
-            color: #333;
+        .container {
+            max-width: 650px;
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
         }
-        .link-button {
-            display: inline-block;
-            background-color: #007bff;
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            margin-top: 20px;
+            padding: 30px 20px;
+            text-align: center;
         }
-        .link-button:hover {
-            background-color: #0056b3;
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.95;
+            line-height: 1.5;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .content p {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 12px;
+        }
+        .donation-section {
+            margin-top: 25px;
+        }
+        .donation-section h2 {
+            font-size: 18px;
+            color: #667eea;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .donation-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .donate-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 16px;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #333;
+            font-weight: 600;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .donate-button:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        .donate-button span {
+            font-size: 18px;
+            margin-right: 10px;
+        }
+        .contact-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        .contact-section p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .contact-link {
+            display: inline-flex;
+            align-items: center;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .contact-link:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 600px) {
+            .container {
+                border-radius: 0;
+            }
+            .header h1 {
+                font-size: 24px;
+            }
+            .content {
+                padding: 20px 15px;
+            }
         }
     </style>
 </head>
 <body>
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Support Open Source Development</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                text-align: center;
-                padding: 20px;
-                background-color: #007bff;
-                color: rgb(238, 240, 243);
-            }
-            .container {
-                max-width: 600px;
-                margin: auto;
-                background: rgb(151, 138, 228);
-                color: black;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            }
-            h1 {
-                color: #dc3545;
-            }
-            h2 {
-                color: #007bff;
-            }
-            p {
-                line-height: 1.6;
-            }
-            ul {
-                text-align: left;
-                max-width: 500px;
-                margin: 20px auto;
-            }
-            li {
-                margin-bottom: 10px;
-            }
-            .donate-button {
-                display: inline-block;
-                background-color: #28a745;
-                color: white;
-                padding: 10px 20px;
-                text-decoration: none;
-                border-radius: 5px;
-                margin-top: 20px;
-            }
-            .qr-section {
-                margin: 20px 0;
-                padding: 10px;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-            }
-            .qr-section h2 {
-                margin-bottom: 10px;
-            }
-            .qr-section img {
-                max-width: 200px;
-                height: auto;
-            }
-            .qr-section a.donate-link {
-                color: #222;
-                font-weight: bold;
-                word-break: break-all;
-                text-decoration: underline;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Support Open Source Development</h1>
-            <p>Developing software requires significant time and resources. Your donations help cover the hours spent coding, testing, and maintaining projects, as well as the costs of accounts and services needed for deployment, hosting, and integrations.</p>
-            <p>Without support from the community, it's challenging to sustain open-source projects and continue delivering valuable tools. Every contribution makes a difference in keeping development alive and improving software for everyone.</p>
-            <p>Thank you for considering a donation!</p>
-            <ul>
-                <li>Open source software is important to development communities.</li>
-                <li>Fosters innovation and collaboration among developers.</li>
-                <li>Allows learning and skill development for aspiring programmers.</li>
-                <li>Provides cost-effective solutions for businesses and individuals.</li>
-                <li>Drives technological advancement and pushes boundaries.</li>
-                <li>Builds strong communities and shared knowledge.</li>
-            </ul>
-            <h2>Choose Your Donation Method</h2>
-            <div class="qr-section">
-                <h2>PayPal</h2>
-                <a href="https://paypal.me/Dr1zztD" target="_blank">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A%2F%2Fpaypal.me%2FDr1zztD" alt="PayPal QR Code">
-                </a>
-                <p><a href="https://paypal.me/Dr1zztD" target="_blank" class="donate-link">paypal.me/Dr1zztD</a></p>
+    <div class="container">
+        <div class="header">
+            <h1>💜 Support ChirpScrape</h1>
+            <p>Help sustain open-source development with your generous contribution</p>
+        </div>
+        <div class="content">
+            <p>Your support helps cover development time, server costs, and integration accounts. Every donation makes a real difference in maintaining this project.</p>
+            
+            <div class="donation-section">
+                <h2>Choose Your Method</h2>
+                <div class="donation-options">
+                    <a href="https://paypal.me/Dr1zztD" target="_blank" class="donate-button">
+                        <span>💵</span> PayPal: paypal.me/Dr1zztD
+                    </a>
+                    <a href="https://cash.app/$teerRight" target="_blank" class="donate-button">
+                        <span>💵</span> Cash App: $teerRight
+                    </a>
+                </div>
             </div>
-            <div class="qr-section">
-                <h2>Cash App</h2>
-                <a href="https://cash.app/$teerRight" target="_blank">
-                    <img src="https://cash.app/qr/$teerRight" alt="Cash App QR Code">
+            
+            <div class="contact-section">
+                <p>Questions? Get in touch:</p>
+                <a href="mailto:trstechie@gmail.com" class="contact-link">
+                    📧 trstechie@gmail.com
                 </a>
-                <p><a href="https://cash.app/$teerRight" target="_blank" class="donate-link">$teerRight</a></p>
-            </div>
-            <div style="margin-top: 32px; font-size: 1.1em; color: #333;">
-                <span title="Email">📧</span> <a href="mailto:trstechie@gmail.com" style="color: #333; text-decoration: underline;">trstechie@gmail.com</a>
             </div>
         </div>
-    </body>
-    </html>
+    </div>
+</body>
+</html>
