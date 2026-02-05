@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Variant 08: two large radios with crosstalk waves between -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" width="1000" height="360">
+  <rect width="100%" height="100%" fill="#071233"/>
+  <g transform="translate(60,40)">
+    <rect x="0" y="0" width="160" height="260" rx="12" fill="#12263A"/>
+  </g>
+  <g transform="translate(780,40)">
+    <rect x="0" y="0" width="160" height="260" rx="12" fill="#0B3D91"/>
+  </g>
+  <!-- crosstalk -->
+  <path d="M240,120 C360,40 640,200 760,120" fill="none" stroke="#FF8A00" stroke-width="8" stroke-linecap="round"/>
+  <path d="M240,180 C360,260 640,100 760,180" fill="none" stroke="#00A3A3" stroke-width="6" stroke-dasharray="12 8"/>
+  <text x="500" y="330" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#9fb6d6">Crosstalk between two radios</text>
+</svg>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Variant 12: Focused TP-Link TL-WR310N travel router illustration + shebang -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360" width="600" height="360">
+  <rect width="100%" height="100%" fill="#071233"/>
+  <!-- router body -->
+  <g transform="translate(80,80)">
+    <rect x="0" y="0" width="440" height="180" rx="18" fill="#0B3D91"/>
+    <rect x="20" y="20" width="400" height="140" rx="12" fill="#071233"/>
+    <text x="220" y="100" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#7CFFB2">TP-Link TL-WR310N</text>
+    <!-- two small antenna lines -->
+    <rect x="380" y="-40" width="8" height="60" rx="4" fill="#0E2133"/>
+    <rect x="420" y="-40" width="8" height="60" rx="4" fill="#0E2133"/>
+  </g>
+
+  <!-- shebang badge -->
+  <g transform="translate(420,20)">
+    <rect x="0" y="0" width="140" height="46" rx="8" fill="#081b4a"/>
+    <text x="70" y="32" text-anchor="middle" font-family="monospace" font-size="20" fill="#FF8A00">#!shebang</text>
+  </g>
+
+  <text x="300" y="340" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#9fb6d6">Travel router motif — tech crossover</text>
+</svg>
