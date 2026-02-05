@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Simple stylized Baofeng UV-5R silhouette -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 600" width="240" height="600">
+  <style>
+    .body{fill:#12263A}
+    .screen{fill:#A7E0FF}
+    .button{fill:#0B3D91}
+    .accent{fill:#FF8A00}
+    .antenna{fill:#111}
+    .label{font: bold 18px/1.2 sans-serif; fill:#FFF}
+  </style>
+
+  <!-- body -->
+  <rect x="30" y="40" rx="18" ry="18" width="180" height="520" class="body"/>
+
+  <!-- speaker grille -->
+  <g transform="translate(54,80)" fill="#0E2133">
+    <rect x="0" y="0" width="132" height="28" rx="6"/>
+    <g fill="#12263A">
+      <rect x="6" y="6" width="12" height="12" rx="2"/>
+      <rect x="30" y="6" width="12" height="12" rx="2"/>
+      <rect x="54" y="6" width="12" height="12" rx="2"/>
+      <rect x="78" y="6" width="12" height="12" rx="2"/>
+      <rect x="102" y="6" width="12" height="12" rx="2"/>
+    </g>
+  </g>
+
+  <!-- screen -->
+  <rect x="48" y="130" width="144" height="70" rx="8" class="screen" stroke="#0B3D91" stroke-width="4"/>
+  <text x="120" y="170" text-anchor="middle" class="label">UV-5R</text>
+
+  <!-- keypad rows -->
+  <g fill="#0E2133">
+    <rect x="48" y="220" width="30" height="28" rx="6"/>
+    <rect x="84" y="220" width="30" height="28" rx="6"/>
+    <rect x="120" y="220" width="30" height="28" rx="6"/>
+    <rect x="156" y="220" width="36" height="28" rx="6"/>
+
+    <rect x="48" y="260" width="30" height="28" rx="6"/>
+    <rect x="84" y="260" width="30" height="28" rx="6"/>
+    <rect x="120" y="260" width="30" height="28" rx="6"/>
+    <rect x="156" y="260" width="36" height="28" rx="6"/>
+  </g>
+
+  <!-- side knob & PTT -->
+  <rect x="18" y="120" width="14" height="90" rx="6" fill="#0B3D91"/>
+  <rect x="18" y="240" width="14" height="60" rx="6" fill="#FF8A00"/>
+
+  <!-- antenna -->
+  <rect x="112" y="-140" width="16" height="190" rx="8" class="antenna"/>
+
+  <!-- bottom label -->
+  <text x="120" y="560" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#9fb6d6">Ham × Code</text>
+</svg>

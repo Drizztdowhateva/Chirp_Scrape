@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Crosstalk visualization: overlapping waveforms and interference nodes -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300">
+  <style>
+    .bg{fill:#071233}
+    .waveA{fill:none;stroke:#FF8A00;stroke-width:6;stroke-linecap:round}
+    .waveB{fill:none;stroke:#00A3A3;stroke-width:6;stroke-linecap:round;stroke-dasharray:12 8}
+    .interf{fill:#FF3B30;opacity:0.9}
+    .label{font-family:sans-serif;fill:#fff;font-size:18px}
+  </style>
+
+  <rect width="100%" height="100%" class="bg"/>
+
+  <!-- orange waveform -->
+  <path class="waveA" d="M0,150 C80,90 160,210 240,150 C320,90 400,210 480,150 C560,90 640,210 720,150 C800,90 880,210 960,150" />
+
+  <!-- teal waveform offset -->
+  <path class="waveB" d="M0,120 C80,180 160,60 240,120 C320,180 400,60 480,120 C560,180 640,60 720,120 C800,180 880,60 960,120" />
+
+  <!-- interference nodes where they cross (illustrative) -->
+  <g>
+    <circle class="interf" cx="120" cy="140" r="8"/>
+    <circle class="interf" cx="360" cy="140" r="8"/>
+    <circle class="interf" cx="600" cy="140" r="8"/>
+    <circle class="interf" cx="840" cy="140" r="8"/>
+  </g>
+
+  <text x="20" y="32" class="label">Crosstalk: overlapping signals & interference</text>
+</svg>
