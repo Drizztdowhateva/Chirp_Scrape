@@ -785,6 +785,36 @@ def launch_gui_and_run(default_pages, output_path):
         pass
 
     menubar = tk.Menu(root)
+
+    # Helper: center a Toplevel on the parent and clamp to screen so buttons stay visible
+    def center_and_clamp(win, desired_w, desired_h, parent_win=None):
+        try:
+            parent = parent_win if parent_win is not None else root
+            parent.update_idletasks()
+            sw = parent.winfo_screenwidth()
+            sh = parent.winfo_screenheight()
+            w = min(int(desired_w), max(100, sw - 40))
+            h = min(int(desired_h), max(60, sh - 80))
+            # try to center on parent
+            try:
+                px = parent.winfo_x()
+                py = parent.winfo_y()
+                pw = parent.winfo_width()
+                ph = parent.winfo_height()
+                x = px + (pw - w) // 2
+                y = py + (ph - h) // 2
+            except Exception:
+                x = (sw - w) // 2
+                y = (sh - h) // 2
+            # clamp
+            x = max(0, min(x, sw - w - 10))
+            y = max(0, min(y, sh - h - 10))
+            win.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            try:
+                win.geometry(f"+0+0")
+            except Exception:
+                pass
     
     # Variable to store the last exported DataFrame for Save As
     exported_data = {'dataframe': None, 'row_count': 0}
@@ -796,14 +826,100 @@ def launch_gui_and_run(default_pages, output_path):
         if exported_data['dataframe'] is None:
             messagebox.showwarning('Save As', 'No data to save. Please export CSV first.')
             return
-        initial = 'chirp_output.csv'
-        save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialfile=initial, title='Save CSV as')
-        if not save_path:
-            return
+
+        # Create a small progress window and write row-by-row so user sees progress
+        progress_window = tk.Toplevel(root)
+        progress_window.title('Saving CSV')
+        progress_window.resizable(False, False)
+        progress_window.transient(root)
+        progress_window.grab_set()
+        center_and_clamp(progress_window, 400, 120)
+
+        progress_label = tk.Label(progress_window, text='Preparing save...', wraplength=380)
+        progress_label.pack(pady=10)
+        progress_bar = ttk.Progressbar(progress_window, mode='indeterminate', length=360)
+        progress_bar.pack(pady=10, padx=20)
+        progress_bar.start()
+        progress_status = tk.Label(progress_window, text='', font=('Arial', 9))
+        progress_status.pack(pady=5)
+
+        def update_progress(msg):
+            progress_status.config(text=msg)
+            progress_window.update()
+
         try:
-            exported_data['dataframe'].to_csv(save_path)
-            messagebox.showinfo('Done', f'Wrote {exported_data["row_count"]} rows to {save_path}')
+            # build default filename similar to export: Chirp_$Model_Zipcode[#]_$Month
+            try:
+                from datetime import datetime
+                model_raw = None
+                try:
+                    model_raw = preferences_data.get('selected_model').get()
+                except Exception:
+                    model_raw = 'Generic'
+                model_s = re.sub(r'[^A-Za-z0-9]+', '_', model_raw).strip('_') or 'Model'
+
+                zip_part = 'Export'
+                pages_meta = exported_data.get('pages') or {}
+                zip_candidates = []
+                for k, v in pages_meta.items() if isinstance(pages_meta, dict) else []:
+                    m1 = re.search(r"(\d{5})", str(k))
+                    m2 = re.search(r"(\d{5})", str(v))
+                    if m1:
+                        zip_candidates.append(m1.group(1))
+                    elif m2:
+                        zip_candidates.append(m2.group(1))
+                # keep unique zip list in order
+                unique_zips = []
+                for z in zip_candidates:
+                    if z not in unique_zips:
+                        unique_zips.append(z)
+                if unique_zips:
+                    if len(unique_zips) <= 6:
+                        zip_part = '-'.join(unique_zips)
+                    else:
+                        zip_part = f"{unique_zips[0]}[{len(unique_zips)}]"
+                else:
+                    first_label = next(iter(pages_meta.keys()), 'Export') if isinstance(pages_meta, dict) else 'Export'
+                    zip_part = re.sub(r'[^A-Za-z0-9]+', '_', first_label).strip('_')
+
+                month_part = datetime.now().strftime('%b%Y')
+                default_name = f"Chirp_{model_s}_{zip_part}_{month_part}.csv"
+            except Exception:
+                default_name = 'chirp_output.csv'
+
+            progress_bar.stop()
+            progress_label.config(text='Choose save location...')
+            progress_window.update()
+
+            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialfile=default_name, title='Save CSV as')
+            if not save_path:
+                progress_window.destroy()
+                return
+
+            # write row-by-row with determinate progress
+            outdf = exported_data['dataframe']
+            total = exported_data.get('row_count', len(outdf))
+            progress_bar.config(mode='determinate', maximum=total, value=0)
+            update_progress(f'Writing 0/{total} rows...')
+            import csv as _csv
+            fieldnames = ['Location'] + list(outdf.columns)
+            with open(save_path, 'w', newline='', encoding='utf-8') as wf:
+                writer = _csv.DictWriter(wf, fieldnames=fieldnames)
+                writer.writeheader()
+                i = 0
+                for idx, row in outdf.iterrows():
+                    i += 1
+                    rec = {'Location': idx}
+                    for c in outdf.columns:
+                        rec[c] = row.get(c, '')
+                    writer.writerow(rec)
+                    progress_bar['value'] = i
+                    update_progress(f'Writing {i}/{total} rows...')
+
+            progress_window.destroy()
+            messagebox.showinfo('Done', f'Wrote {total} rows to {save_path}')
         except Exception as e:
+            progress_window.destroy()
             messagebox.showerror('Error', f'Failed to save CSV: {e}')
     
     filemenu.add_command(label='Save As...', command=on_save_as)
@@ -883,14 +999,8 @@ def launch_gui_and_run(default_pages, output_path):
     def show_getting_started():
         guide_window = tk.Toplevel(root)
         guide_window.title('Getting Started with ChirpScrape')
-        guide_window.geometry('700x650')
+        center_and_clamp(guide_window, 700, 650)
         guide_window.resizable(True, True)
-        
-        # Center on parent
-        guide_window.update_idletasks()
-        x = root.winfo_x() + (root.winfo_width() - 700) // 2
-        y = root.winfo_y() + (root.winfo_height() - 650) // 2
-        guide_window.geometry(f'+{x}+{y}')
         
         # Create scrollable frame
         canvas = tk.Canvas(guide_window)
@@ -1000,14 +1110,8 @@ def launch_gui_and_run(default_pages, output_path):
     def open_firmware_resources():
         resources_window = tk.Toplevel(root)
         resources_window.title('Firmware Unlock Resources')
-        resources_window.geometry('700x500')
         resources_window.resizable(True, True)
-        
-        # Center on parent
-        resources_window.update_idletasks()
-        x = root.winfo_x() + (root.winfo_width() - 700) // 2
-        y = root.winfo_y() + (root.winfo_height() - 500) // 2
-        resources_window.geometry(f'+{x}+{y}')
+        center_and_clamp(resources_window, 700, 500)
         
         # Create scrollable frame
         canvas = tk.Canvas(resources_window)
@@ -1067,7 +1171,8 @@ def launch_gui_and_run(default_pages, output_path):
     def open_soap_debug():
         dlg = tk.Toplevel(root)
         dlg.title('SOAP Debug')
-        dlg.geometry('800x500')
+        dlg.resizable(True, True)
+        center_and_clamp(dlg, 800, 500)
         frm = tk.Frame(dlg)
         frm.pack(fill='both', expand=True)
         left = tk.Frame(frm)
@@ -1224,15 +1329,15 @@ def launch_gui_and_run(default_pages, output_path):
     def open_preferences():
         pref_window = tk.Toplevel(root)
         pref_window.title('Preferences')
-        pref_window.geometry('750x650')
-        pref_window.minsize(700, 600)
+        # clamp minimums to screen size
+        try:
+            sw = root.winfo_screenwidth()
+            sh = root.winfo_screenheight()
+            pref_window.minsize(min(700, max(200, sw-40)), min(600, max(120, sh-80)))
+        except Exception:
+            pref_window.minsize(700, 600)
         pref_window.grab_set()
-        
-        # Center preferences window on parent
-        pref_window.update_idletasks()
-        x = root.winfo_x() + (root.winfo_width() - 750) // 2
-        y = root.winfo_y() + (root.winfo_height() - 650) // 2
-        pref_window.geometry(f'+{x}+{y}')
+        center_and_clamp(pref_window, 750, 650)
         
         # Title
         title_frame = tk.Frame(pref_window)
@@ -1928,11 +2033,7 @@ def launch_gui_and_run(default_pages, output_path):
         progress_window.transient(root)
         progress_window.grab_set()
         
-        # Center progress window on parent
-        progress_window.update_idletasks()
-        x = root.winfo_x() + (root.winfo_width() - 400) // 2
-        y = root.winfo_y() + (root.winfo_height() - 120) // 2
-        progress_window.geometry(f'+{x}+{y}')
+        center_and_clamp(progress_window, 400, 120)
         
         progress_label = tk.Label(progress_window, text='Processing and building CSV...', wraplength=380)
         progress_label.pack(pady=10)
@@ -1966,23 +2067,79 @@ def launch_gui_and_run(default_pages, output_path):
             # Store data for Save As functionality
             exported_data['dataframe'] = outdf
             exported_data['row_count'] = len(outdf)
+            exported_data['pages'] = pages
             
             # Ask user where to save the CSV
             progress_bar.stop()
             progress_label.config(text='Choose save location...')
             progress_window.update()
-            
-            initial = output_path or 'chirp_output.csv'
-            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialfile=initial, title='Save CSV as')
+
+            # Build sensible default filename: Chirp_$Model_$Zipcode[#]_$Month
+            try:
+                from datetime import datetime
+                import csv as _csv
+                # model
+                model_raw = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
+                model_s = re.sub(r'[^A-Za-z0-9]+', '_', model_raw).strip('_') or 'Model'
+
+                # try to find zip codes in pages labels/urls
+                zip_candidates = []
+                for k, v in pages.items():
+                    m1 = re.search(r"(\d{5})", str(k))
+                    m2 = re.search(r"(\d{5})", str(v))
+                    if m1:
+                        zip_candidates.append(m1.group(1))
+                    elif m2:
+                        zip_candidates.append(m2.group(1))
+                unique_zips = []
+                for z in zip_candidates:
+                    if z not in unique_zips:
+                        unique_zips.append(z)
+                if unique_zips:
+                    if len(unique_zips) <= 6:
+                        zip_part = '-'.join(unique_zips)
+                    else:
+                        zip_part = f"{unique_zips[0]}[{len(unique_zips)}]"
+                else:
+                    # fallback to first page label sanitized
+                    first_label = next(iter(pages.keys()), 'Location')
+                    zip_part = re.sub(r'[^A-Za-z0-9]+', '_', first_label).strip('_')
+
+                month_part = datetime.now().strftime('%b%Y')
+                default_name = f"Chirp_{model_s}_{zip_part}_{month_part}.csv"
+            except Exception:
+                default_name = output_path or 'chirp_output.csv'
+
+            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialfile=default_name, title='Save CSV as')
             if not save_path:
                 progress_window.destroy()
                 return
-            
-            progress_bar.start()
-            update_progress(f'Writing to file...')
-            outdf.to_csv(save_path)
-            progress_window.destroy()
-            messagebox.showinfo('Done', f'Wrote {len(outdf)} rows to {save_path}')
+
+            # Write CSV row-by-row so we can show determinate progress
+            try:
+                import csv as _csv
+                total = len(outdf)
+                progress_bar.config(mode='determinate', maximum=total, value=0)
+                update_progress(f'Writing 0/{total} rows...')
+                # write with explicit Location column (index)
+                fieldnames = ['Location'] + list(outdf.columns)
+                with open(save_path, 'w', newline='', encoding='utf-8') as wf:
+                    writer = _csv.DictWriter(wf, fieldnames=fieldnames)
+                    writer.writeheader()
+                    i = 0
+                    for idx, row in outdf.iterrows():
+                        i += 1
+                        rec = {'Location': idx}
+                        for c in outdf.columns:
+                            rec[c] = row.get(c, '')
+                        writer.writerow(rec)
+                        progress_bar['value'] = i
+                        update_progress(f'Writing {i}/{total} rows...')
+                progress_window.destroy()
+                messagebox.showinfo('Done', f'Wrote {total} rows to {save_path}')
+            except Exception as e:
+                progress_window.destroy()
+                messagebox.showerror('Error', f'Failed writing CSV: {e}')
         except Exception as e:
             progress_window.destroy()
             messagebox.showerror('Error', f'Failed to export CSV: {e}')
