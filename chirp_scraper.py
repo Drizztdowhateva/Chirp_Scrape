@@ -8,45 +8,50 @@
 # `radioref.csv`. If `radioref.csv` is missing or you want to refresh RadioReference
 # data, run `make_radioref_list.py` before using this program.
 
-
+import subprocess
 import os
 import sys
-import subprocess
 
 def _ensure_project_venv_and_requirements():
     here = os.path.dirname(os.path.abspath(__file__))
     venv_dir = os.path.join(here, '.venv')
-    # Choose the platform-specific virtualenv python path
     if os.name == 'nt':
         venv_py = os.path.join(venv_dir, 'Scripts', 'python.exe')
     else:
         venv_py = os.path.join(venv_dir, 'bin', 'python')
     reqs = os.path.join(here, 'requirements.txt')
 
-    # Create venv if missing
     if not os.path.exists(venv_py):
-        print('Creating virtual environment...')
-        subprocess.check_call([sys.executable, '-m', 'venv', venv_dir])
+        try:
+            print('Creating virtual environment...')
+            subprocess.check_call([sys.executable, '-m', 'venv', venv_dir])
+        except Exception:
+            pass
 
-
-    # Install requirements if needed
     need_reexec = False
     try:
         import pandas, bs4, requests
-    except ImportError:
-        print('Installing required Python packages...')
-        subprocess.check_call([venv_py, '-m', 'pip', 'install', '--upgrade', 'pip'])
-        if os.path.exists(reqs):
-            subprocess.check_call([venv_py, '-m', 'pip', 'install', '-r', reqs])
-        else:
-            subprocess.check_call([venv_py, '-m', 'pip', 'install', 'pandas', 'requests', 'beautifulsoup4'])
-        need_reexec = True
+    except Exception:
+        try:
+            print('Installing required Python packages...')
+            subprocess.check_call([venv_py, '-m', 'pip', 'install', '--upgrade', 'pip'])
+            if os.path.exists(reqs):
+                subprocess.check_call([venv_py, '-m', 'pip', 'install', '-r', reqs])
+            else:
+                subprocess.check_call([venv_py, '-m', 'pip', 'install', 'pandas', 'requests', 'beautifulsoup4'])
+            need_reexec = True
+        except Exception:
+            need_reexec = False
 
-    # Always re-exec in venv after installing requirements, or if not already in venv
-    if need_reexec or os.path.realpath(sys.executable) != os.path.realpath(venv_py):
-        os.execv(venv_py, [venv_py] + sys.argv)
+    try:
+        if need_reexec or os.path.realpath(sys.executable) != os.path.realpath(venv_py):
+            os.execv(venv_py, [venv_py] + sys.argv)
+    except Exception:
+        pass
 
-_ensure_project_venv_and_requirements()
+# Bootstrapping step is optional and disabled by default to avoid
+# attempting system package installation in managed environments.
+# Call `_ensure_project_venv_and_requirements()` manually if needed.
 
 import re
 import sys
@@ -571,7 +576,7 @@ def fetch_freqs_for_page(url):
     except Exception:
         pass
     # fallback
-    return scrape_rr(url)
+        return scrape_rr(url)
 
 def get_pages_from_user():
     """Get a dict of {label: url} from the user.
@@ -818,11 +823,16 @@ def launch_gui_and_run(default_pages, output_path):
     
     # Variable to store the last exported DataFrame for Save As
     exported_data = {'dataframe': None, 'row_count': 0}
+    exporting_flag = {'running': False}
+    band_checkbuttons = {}
     
     # File menu with Exit and Save As
     filemenu = tk.Menu(menubar, tearoff=0)
     
     def on_save_as():
+        if exporting_flag.get('running'):
+            messagebox.showwarning('Save As', 'Export in progress — please wait until it completes.')
+            return
         if exported_data['dataframe'] is None:
             messagebox.showwarning('Save As', 'No data to save. Please export CSV first.')
             return
@@ -1583,6 +1593,11 @@ def launch_gui_and_run(default_pages, output_path):
             # Store tweak settings
             for key, var in tweak_vars.items():
                 tweaks_config[key]['value'] = var.get()
+            try:
+                # enforce constraints immediately in main UI
+                enforce_model_constraints()
+            except Exception:
+                pass
             pref_window.destroy()
             messagebox.showinfo('Preferences', f'✓ Settings saved!\nRadio Model: {model_var.get()}\nQuality Level: {custom_var.get()}')
         
@@ -1866,6 +1881,14 @@ def launch_gui_and_run(default_pages, output_path):
 
     # Export button (centered at bottom)
     def on_export():
+        if exporting_flag.get('running'):
+            messagebox.showwarning('Export', 'An export is already running. Please wait.')
+            return
+        exporting_flag['running'] = True
+        try:
+            export_btn.config(state='disabled')
+        except Exception:
+            pass
         pages = {}
         # Require at least one ZIP code and one band selected
         zip_present = any(re.match(r'^\d{5}$', iv.get().strip() or '') for iv in input_vars)
@@ -1917,6 +1940,29 @@ def launch_gui_and_run(default_pages, output_path):
 
         # run scraping and filter by selected bands
         rows = []
+        # Show a progress window while fetching pages so user sees percentage
+        try:
+            fetch_total = max(1, len(pages))
+            fetch_progress = 0
+            fetch_window = tk.Toplevel(root)
+            fetch_window.title('Fetching frequencies...')
+            fetch_window.geometry('420x120')
+            fetch_window.resizable(False, False)
+            fetch_window.transient(root)
+            fetch_window.grab_set()
+            center_and_clamp(fetch_window, 420, 120)
+            fetch_label = tk.Label(fetch_window, text='Fetching pages and collating frequencies...', wraplength=400)
+            fetch_label.pack(pady=8)
+            fetch_bar = ttk.Progressbar(fetch_window, mode='determinate', length=380, maximum=fetch_total, value=0)
+            fetch_bar.pack(pady=6)
+            fetch_status = tk.Label(fetch_window, text='0% (0/{})'.format(fetch_total), font=('Arial', 9))
+            fetch_status.pack()
+            fetch_window.update()
+        except Exception:
+            fetch_window = None
+            fetch_bar = None
+
+        page_idx = 0
         for c, u in pages.items():
             for tup in fetch_freqs_for_page(u):
                     # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint])
@@ -1941,6 +1987,17 @@ def launch_gui_and_run(default_pages, output_path):
                     if not band_label:
                         continue
                     rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint})
+        
+        # update fetch progress after each page processed
+        try:
+            page_idx += 1
+            if fetch_bar is not None:
+                fetch_bar['value'] = page_idx
+                pct = int((page_idx / float(fetch_total)) * 100)
+                fetch_status.config(text=f'{pct}% ({page_idx}/{fetch_total})')
+                fetch_window.update()
+        except Exception:
+            pass
 
         # If NOAA band selected, include NOAA weather frequencies from CSV
         if 'NOAA' in sel_bands:
@@ -2026,7 +2083,7 @@ def launch_gui_and_run(default_pages, output_path):
             })
 
         # Create progress window
-        progress_window = tk.Toplevel(root)
+            progress_window = tk.Toplevel(root)
         progress_window.title('Exporting CSV')
         progress_window.geometry('400x120')
         progress_window.resizable(False, False)
@@ -2141,8 +2198,17 @@ def launch_gui_and_run(default_pages, output_path):
                 progress_window.destroy()
                 messagebox.showerror('Error', f'Failed writing CSV: {e}')
         except Exception as e:
-            progress_window.destroy()
+            try:
+                progress_window.destroy()
+            except Exception:
+                pass
             messagebox.showerror('Error', f'Failed to export CSV: {e}')
+        finally:
+            exporting_flag['running'] = False
+            try:
+                export_btn.config(state='normal')
+            except Exception:
+                pass
 
     # Add Model-Specific Options Frame
     model_options_row = start_row + 1 + len(BAND_RANGES) + 3
@@ -2185,10 +2251,85 @@ def launch_gui_and_run(default_pages, output_path):
             if model_obj.get('supports_timeslot'):
                 features.append('Timeslot')
             model_features_var.set('Features: ' + ' • '.join(features))
+
+    # Enforce model constraints on UI controls (bands and tweak options)
+    def enforce_model_constraints():
+        # Determine selected model key
+        model_key = None
+        sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else None
+        for key, model in RADIO_MODELS.items():
+            if model['name'] == sel_name:
+                model_key = key
+                break
+        model_obj = RADIO_MODELS.get(model_key) if model_key else RADIO_MODELS.get('Generic')
+
+        # Define basic requirements for bands -> required features (any-of semantics)
+        BAND_FEATURE_REQUIREMENTS = {
+            'MURS': {'requires_any': ['supports_tone', 'supports_mode']},
+            'FRS/GMRS': {'requires_any': ['supports_duplex', 'supports_offset', 'supports_mode']},
+            'NOAA': {'requires_any': ['supports_mode', 'supports_tone']},
+        }
+
+        # Disable or enable band checkbuttons based on model capabilities
+        for band, cb in band_checkbuttons.items():
+            req = BAND_FEATURE_REQUIREMENTS.get(band)
+            disabled = False
+            if req and model_obj:
+                any_ok = False
+                for feat in req.get('requires_any', []):
+                    if model_obj.get(feat):
+                        any_ok = True
+                        break
+                disabled = not any_ok
+            try:
+                cb.config(state='disabled' if disabled else 'normal')
+                # if disabling, also uncheck and remove from listbox
+                if disabled:
+                    try:
+                        # uncheck variable
+                        if band_vars.get(band):
+                            band_vars[band].set(0)
+                        for i in range(band_listbox.size()-1, -1, -1):
+                            if band_listbox.get(i) == band:
+                                band_listbox.delete(i)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # Map tweak options to required model features (disable if unsupported)
+        OPTION_REQUIREMENTS = {
+            'auto_step_optimize': 'supports_step',
+            'filter_narrow_band': 'supports_mode',
+            'remove_all_dups': None,
+            'strict_freq_check': None,
+        }
+        try:
+            tcb = tweak_checkbuttons
+            for key, cb in tcb.items():
+                req_feat = OPTION_REQUIREMENTS.get(key)
+                if req_feat and model_obj and not model_obj.get(req_feat):
+                    try:
+                        cb.config(state='disabled')
+                        tweak_vars.get(key).set(False)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        cb.config(state='normal')
+                    except Exception:
+                        pass
+        except Exception:
+            # tweaks UI not present yet; ignore
+            pass
     
     # Bind preferences data changes to update display (periodically check)
     def check_model_change():
         update_model_display_main()
+        try:
+            enforce_model_constraints()
+        except Exception:
+            pass
         root.after(1000, check_model_change)  # Check every second for changes
     
     check_model_change()

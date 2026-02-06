@@ -1,5 +1,5 @@
 
-# Chirp RadioReference Scraper
+# Chirp RadioReference Scraper 🚀
 
 ![ChirpScrape screenshot](media/ChirpScrape_screenshot.png)
 
@@ -9,7 +9,7 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 **📚 Documentation**: See [README_ENHANCEMENTS.md](README_ENHANCEMENTS.md) for complete feature documentation, and [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
-## Quick Start
+## Quick Start ✅
 
 1. **One-step bootstrap (recommended)**
 
@@ -69,7 +69,7 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 3. **Check output:**
    - Output files will be generated in the project directory (e.g., `chirp_output.csv`).
 
-## Donations
+## Donations 🙏
 
 Developing and maintaining open source software takes significant time and resources. Your support helps cover development, testing, and hosting costs. Every contribution makes a difference!
 
@@ -77,7 +77,7 @@ Developing and maintaining open source software takes significant time and resou
 
 **Thank you for considering a donation!**
 
-### Why Donate?
+### Why Donate? 💡
 - Open source software fosters innovation and collaboration.
 - Supports learning and skill development for programmers.
 - Provides cost-effective solutions for everyone.
@@ -99,9 +99,9 @@ Developing and maintaining open source software takes significant time and resou
 
 ---
 
-## Troubleshooting
+## Troubleshooting 🛠️
 
-### RadioReference Index File (`radioref.csv`)
+### RadioReference Index File (`radioref.csv`) 📂
 
 If you see errors or missing data related to RadioReference lookups, or if `radioref.csv` is missing or outdated, you need to (re)generate the index file. Use the helper script below:
 
@@ -119,7 +119,7 @@ Run this command to crawl RadioReference and build or refresh the index:
 
 See `README.txt` for additional project notes.
 
-## Legal
+## Legal ⚖️
 
 This software is provided as-is. When scraping websites, ensure you follow the target site's terms of service and robots.txt. The author is not responsible for misuse.
 

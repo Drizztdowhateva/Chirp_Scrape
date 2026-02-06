@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clickable donation links with 💵 emoji for PayPal and Cash App
 - Email contact option on donation page
 
+### Fixed
+- Prevent Save As while an export is in progress to avoid incomplete files 🧰
+- Ensure export progress shows determinate per-page percentage and avoids UI freeze (threaded fetch with per-page timeout) ⏱️
+- Enforce radio model feature constraints in Preferences so only compatible bands/options can be selected ✅
+
 ### Changed
 - Improved donation dialog initialization (500ms delay for proper focus)
 - Enhanced donation portal with professional typography and styling
