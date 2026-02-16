@@ -61,10 +61,30 @@
             margin-bottom: 16px;
             text-align: center;
         }
+        .donation-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .qr {
+            flex: 0 0 auto;
+            width: 120px; /* base size */
+            height: auto;
+        }
+
+        /* Keep QR in its natural position (no left shift) */
+        .qr {
+            transform: none;
+        }
+
         .donation-options {
             display: flex;
             flex-direction: column;
             gap: 12px;
+            align-items: stretch;
+            max-width: 420px;
         }
         .donate-button {
             display: flex;
@@ -138,13 +158,23 @@
             
             <div class="donation-section">
                 <h2>Choose Your Method</h2>
-                <div class="donation-options">
-                    <a href="https://paypal.me/Dr1zztD" target="_blank" class="donate-button">
-                        <span>💵</span> PayPal: paypal.me/Dr1zztD
-                    </a>
-                    <a href="https://cash.app/$teerRight" target="_blank" class="donate-button">
-                        <span>💵</span> Cash App: $teerRight
-                    </a>
+                <div class="donation-row">
+                    <div class="qr">
+                        <a href="https://paypal.me/Dr1zztD" target="_blank" title="PayPal">
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A%2F%2Fpaypal.me%2FDr1zztD" alt="PayPal QR" style="width:100%;height:auto;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.12);" />
+                        </a>
+                    </div>
+                    <div class="donation-options">
+                        <a href="https://paypal.me/Dr1zztD" target="_blank" class="donate-button">
+                            <span>💵</span> PayPal: paypal.me/Dr1zztD
+                        </a>
+                        <a href="https://cash.app/$teerRight" target="_blank" class="donate-button">
+                            <span>💵</span> Cash App: $teerRight
+                        </a>
+                        <a href="https://venmo.com/code?user_id=2944897568997376582&created=1771260383" target="_blank" class="donate-button">
+                            <span>📱</span> Venmo
+                        </a>
+                    </div>
                 </div>
             </div>
             

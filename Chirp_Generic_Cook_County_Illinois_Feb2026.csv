@@ -1,0 +1,63 @@
+Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Skip,Comment
+1,WX8,161.65,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+2,WX9,161.775,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+3,WX2PA1,162.4,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+4,WX4PA2,162.425,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+5,WX5PA3,162.45,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+6,WX3PA4,162.475,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+7,WX6PA5,162.5,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+8,WX7PA6,162.525,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+9,WX1PA7,162.55,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+10,WX10,163.275,+,,Tone,88.5,88.5,023,NN,FM,5,,Weather
+11,NA9PL,440.25,+,5.000,Tone,67.0,67.0,023,NN,FM,5,,"Cook County, Illinois"
+12,NA9PL,440.5,+,5.000,Tone,67.0,67.0,023,NN,FM,5,,"Cook County, Illinois"
+13,Administrative 2,442.0,+,5.000,Tone,141.3,141.3,023,NN,FM,5,,"Kent County, Michigan"
+14,K8EFK,442.0,+,5.000,Tone,141.3,141.3,023,NN,FM,5,,"Kent County, Michigan"
+15,A.R.E.S.,442.025,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Grand Traverse County, Michigan"
+16,K8SN,442.175,+,5.000,Tone,103.5,103.5,023,NN,FM,5,,"Kent County, Michigan"
+17,K8SN,442.175,+,5.000,Tone,103.5,103.5,023,NN,FM,5,,"Kent County, Michigan"
+18,Primary Talkaround,442.175,+,5.000,Tone,103.5,103.5,023,NN,FM,5,,"Kent County, Michigan"
+19,A.R.E.S.,442.5,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Grand Traverse County, Michigan"
+20,NS9RC,442.725,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+21,N9EP/R,442.8,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+22,W9PCS,442.875,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+23,WA9VGI,442.975,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+24,KB9TAP,443.175,+,5.000,Tone,127.3,127.3,023,NN,FM,5,,"Cook County, Illinois"
+25,K9KNS,443.725,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+26,CFMC,443.75,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+27,K9VMP/R,443.875,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+28,AIRA,443.975,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+29,W8KRP,444.025,+,5.000,Tone,179.9,179.9,023,NN,FM,5,,"Kent County, Michigan"
+30,SARA,444.375,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Cook County, Illinois"
+31,W8DC,444.4,+,5.000,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+32,A.R.E.S.,444.85,+,5.000,Tone,114.8,114.8,023,NN,FM,5,,"Grand Traverse County, Michigan"
+33,Ops 7 - Simplex,445.5,+,5.000,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+34,Operations 5,446.625,+,5.000,Tone,186.2,186.2,023,NN,FM,5,,"Kent County, Michigan"
+35,Operations 6,446.8625,+,5.000,Tone,186.2,186.2,023,NN,FM,5,,"Kent County, Michigan"
+36,W9GN,145.11,-,,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+37,NW8J,145.11,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+38,Simplex,145.11,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+39,W9DUP,145.13,-,,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+40,W8LRC,145.27,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+41,W8LRC,145.27,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+42,CWA Wide Main,145.27,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+43,K8WM,145.41,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+44,W8EMD,145.41,-,,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+45,Operations 4,146.43,-,,Tone,186.2,186.2,023,NN,FM,5,,"Kent County, Michigan"
+46,W8TVC,146.49,-,,Tone,100.0,100.0,023,NN,FM,5,,"Grand Traverse County, Michigan"
+47,Operations 3,146.58,-,,Tone,186.2,186.2,023,NN,FM,5,,"Kent County, Michigan"
+48,WB9AET,146.67,-,,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+49,CFMC,146.76,-,,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+50,SARA,146.88,-,,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+51,KD8REH,146.96,-,,Tone,114.8,114.8,023,NN,FM,5,,"Grand Traverse County, Michigan"
+52,W9AP,147.09,+,0.600,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+53,KB9KRA,147.105,+,0.600,Tone,131.8,131.8,023,NN,FM,5,,"Cook County, Illinois"
+54,W9SRO,147.15,+,0.600,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+55,W8DC,147.26,+,0.600,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+56,CWA Wide Alternate,147.26,+,0.600,Tone,94.8,94.8,023,NN,FM,5,,"Kent County, Michigan"
+57,W9FO,147.315,+,0.600,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+58,NS9RC,147.345,+,0.600,Tone,107.2,107.2,023,NN,FM,5,,"Cook County, Illinois"
+59,American Red Cross Chicago Area Ham Operations,147.42,+,0.600,Tone,146.2,146.2,023,NN,FM,5,,"Cook County, Illinois"
+60,Operations 1,147.48,+,0.600,Tone,186.2,186.2,023,NN,FM,5,,"Kent County, Michigan"
+61,Ops 3 - Repeater,147.5,+,0.600,Tone,167.9,167.9,023,NN,FM,5,,"Kent County, Michigan"
+62,Operations 2,147.52,+,0.600,Tone,186.2,186.2,023,NN,FM,5,,"Kent County, Michigan"
