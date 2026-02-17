@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added - Enhanced Radio Models & Safety Features
 - **✨ Expanded Baofeng Radio Support**
   - Baofeng UV-5R (Full-size variant)
-  - Baofeng UV-5R Mini (Compact variant)
+
   - Baofeng UV-82 (Rugged/Waterproof variant)
   - Individual feature matrices for each model
 
@@ -99,9 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2026-02-04
 
 ### Added - Major Enhancement Release
-- **Radio Model Selection System**: 5 professional radio models
+- **Radio Model Selection System**: 4 professional radio models
   - Generic (Default)
-  - Anytone DM32UV (NEW) - Full DMR Digital + Analog support
   - Baofeng UV-5R/UV-82
   - Motorola (Professional)
   - Kenwood (VHF/UHF)

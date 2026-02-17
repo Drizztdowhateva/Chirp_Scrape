@@ -5,7 +5,6 @@
 ### 1. ✅ Radio Model Support (Lines 210-280)
 Added comprehensive RADIO_MODELS dictionary with:
 - **Generic Radio** - Default, all CHIRP-compatible radios
-- **Anytone DM32UV** ⭐ NEW - Full DMR digital + analog support
 - **Baofeng UV-5R/UV-82** - Budget friendly option
 - **Motorola Professional** - Commercial grade
 - **Kenwood** - VHF/UHF focused

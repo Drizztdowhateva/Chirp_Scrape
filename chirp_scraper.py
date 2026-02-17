@@ -238,26 +238,7 @@ RADIO_MODELS = {
         'tone_frequencies': True,
         'description': 'Compatible with most CHIRP-supported radios'
     },
-    'DM32UV': {
-        'name': 'Anytone DM32UV',
-        'supports_tone': True,
-        'supports_p25': False,
-        'supports_edacs': False,
-        'supports_dtcs': True,
-        'supports_duplex': True,
-        'supports_offset': True,
-        'supports_step': True,
-        'supports_mode': True,
-        'supports_skip': True,
-        'supports_comment': True,
-        'supports_color_code': True,
-        'supports_timeslot': True,
-        'supports_digital_mode': True,
-        'max_channels': 10000,
-        'tone_frequencies': True,
-        'digital_capabilities': True,
-        'description': 'DMR dual-mode digital/analog with extended features'
-    },
+
     'Baofeng_UV5R': {
         'name': 'Baofeng UV-5R',
         'supports_tone': True,
@@ -272,24 +253,9 @@ RADIO_MODELS = {
         'supports_comment': True,
         'max_channels': 128,
         'tone_frequencies': True,
-        'description': 'Popular budget dual-band UHF/VHF handheld - Full size'
+        'description': 'Popular budget dual-band UHF/VHF handheld (includes UV-5R Mini variant)'
     },
-    'Baofeng_UV5R_Mini': {
-        'name': 'Baofeng UV-5R Mini',
-        'supports_tone': True,
-        'supports_p25': False,
-        'supports_edacs': False,
-        'supports_dtcs': True,
-        'supports_duplex': True,
-        'supports_offset': True,
-        'supports_step': True,
-        'supports_mode': True,
-        'supports_skip': True,
-        'supports_comment': True,
-        'max_channels': 128,
-        'tone_frequencies': True,
-        'description': 'Compact dual-band UHF/VHF handheld - Smaller size variant'
-    },
+
     'Baofeng_UV82': {
         'name': 'Baofeng UV-82',
         'supports_tone': True,
@@ -1193,7 +1159,7 @@ def launch_gui_and_run(default_pages, output_path):
             ('🔧 Quality Levels',
              '• Default: Essential features\n• Standard: Extended features + deduplication\n• Advanced: Power user features\n• High Quality: Maximum optimization'),
             ('📱 Radio Models',
-             'ChirpScrape supports:\n• Generic (all CHIRP radios)\n• DM32UV (DMR + analog)\n• Baofeng UV-5R / UV-5R Mini / UV-82\n• Motorola (Professional)\n• Kenwood (VHF/UHF)'),
+             'ChirpScrape supports:\n• Generic (all CHIRP radios)\n• Baofeng UV-5R/UV-82\n• Motorola (Professional)\n• Kenwood (VHF/UHF)'),
             ('💡 Tips',
              '• Hover over elements for helpful tips\n• RadioReference has the most complete data\n• Check Help > RadioReference for frequency info\n• Contact GitHub for support/issues'),
         ]

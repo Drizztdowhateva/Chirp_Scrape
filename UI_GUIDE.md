@@ -224,17 +224,6 @@ When hovering over Export button:
 │ • Max Channels: 10,000              │
 └─────────────────────────────────────┘
 
-┌─ Anytone DM32UV ⭐ NEW ──────────────┐
-│ • CTCSS Tones                       │
-│ • DTCS Codes                        │
-│ • Duplex (+/-)                      │
-│ • Offset                            │
-│ • DMR Color Code                    │
-│ • DMR Timeslot                      │
-│ • Digital Mode                      │
-│ • Max Channels: 10,000              │
-└─────────────────────────────────────┘
-
 ┌─ Baofeng UV-5R/UV-82 ───────────────┐
 │ • CTCSS Tones                       │
 │ • DTCS Codes                        │
@@ -284,16 +273,5 @@ When hovering over Export button:
 8. Done! ✓
 ```
 
-### Professional Setup (DM32UV)
-```
-1. Go to Preferences → Radio & Export Settings
-2. Select "Anytone DM32UV" from dropdown
-3. Choose "High Quality" for maximum optimization
-4. View supported features (includes DMR options)
-5. Click Apply
-6. Enter location/bands as needed
-7. Click "Export CSV"
-8. Model Options panel shows DM32UV configuration
-9. Done! ✓
-```
+
 

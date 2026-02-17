@@ -17,14 +17,8 @@ The application now supports multiple radio models with model-specific feature d
   - Max Channels: 10,000
   - Features: CTCSS Tones, DTCS, Duplex, Offset
 
-- **Anytone DM32UV** ⭐ NEW
-  - DMR dual-mode digital/analog radio
-  - Max Channels: 10,000
-  - Features: CTCSS Tones, DTCS, Duplex, Offset, DMR Color Code, Timeslot, Digital Mode
-  - Best for: Advanced digital and analog enthusiasts
-
 - **Baofeng UV-5R/UV-82**
-  - Popular budget-friendly handheld
+  - Popular budget-friendly handheld (UV-5R includes Mini variant)
   - Max Channels: 128
   - Features: CTCSS Tones, DTCS, Duplex, Offset
   - Best for: Budget-conscious operators
@@ -143,8 +137,8 @@ Real-time display showing:
 
 **Display:**
 ```
-Model: Anytone DM32UV | Quality: High Quality
-Features: CTCSS Tones • DTCS • Duplex • Offset • Color Code • Timeslot
+Model: Baofeng UV-5R/UV-82 | Quality: High Quality
+Features: CTCSS Tones • DTCS • Duplex • Offset
 ```
 
 ---

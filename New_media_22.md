@@ -6,7 +6,7 @@
 
 ### 🔌 Expanded Baofeng Radio Model Support
 - ✨ **Baofeng UV-5R** - Full-size dual-band handheld with complete feature support
-- ✨ **Baofeng UV-5R Mini** - Compact variant for portable applications
+
 - ✨ **Baofeng UV-82** - Rugged, waterproof variant with enhanced durability
 - 🎯 Each model now has specific descriptions highlighting key differences and capabilities
 - 📊 Individual model feature matrices showing supported capabilities

@@ -75,7 +75,7 @@ Share the ChirpScrape experience across social media platforms while maintaining
 #ChirpScrape #RadioFrequencies #HamRadio"
 
 "ChirpScrape v2.2.0 now features 3 Baofeng models!
-UV-5R | UV-5R Mini | UV-82
+UV-5R | UV-82
 🔗 [GitHub Link]"
 ```
 

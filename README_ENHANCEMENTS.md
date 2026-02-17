@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-ChirpScrape has been significantly enhanced with **professional-grade radio model support**, **comprehensive customization options**, **customer service features**, **extensive user guidance**, and **improved donation experience**. The application now supports 5 radio models (including the Anytone DM32UV), 4 quality tiers, features a complete tooltip system, interactive Getting Started guide, and a professionally-styled donation portal.
+ChirpScrape has been significantly enhanced with **professional-grade radio model support**, **comprehensive customization options**, **customer service features**, **extensive user guidance**, and **improved donation experience**. The application now supports 4 radio models, 4 quality tiers, features a complete tooltip system, interactive Getting Started guide, and a professionally-styled donation portal.
 
 **Status**: ✅ **PRODUCTION READY** | **Fully Backward Compatible** | **1958 Total Lines**
 
@@ -11,9 +11,8 @@ ChirpScrape has been significantly enhanced with **professional-grade radio mode
 ## 🚀 What's New
 
 ### 1. **Radio Model Selection System**
-- **5 Professional Radio Models** with model-specific feature support:
+- **4 Professional Radio Models** with model-specific feature support:
   - ✅ Generic (Default)
-  - ✅ **Anytone DM32UV** ⭐ NEW - Full DMR Digital + Analog
   - ✅ Baofeng UV-5R/UV-82
   - ✅ Motorola (Professional)
   - ✅ Kenwood (VHF/UHF)
@@ -120,16 +119,14 @@ Help → Getting Started ⭐ NEW, RadioReference, How-To, Contact
 
 ## 📊 Feature Comparison: Radio Models
 
-| Feature | Generic | DM32UV | Baofeng | Motorola | Kenwood |
-|---------|---------|--------|---------|----------|---------|
-| CTCSS Tones | ✓ | ✓ | ✓ | ✓ | ✓ |
-| DTCS | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Duplex | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Offset | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Color Code | ✗ | ✓ | ✗ | ✓ | ✗ |
-| Timeslot | ✗ | ✓ | ✗ | ✗ | ✗ |
-| Digital Mode | ✗ | ✓ | ✗ | ✗ | ✗ |
-| Max Channels | 10K | 10K | 128 | 1K | 500 |
+| Feature | Generic | Baofeng | Motorola | Kenwood |
+|---------|---------|---------|----------|----------|
+| CTCSS Tones | ✓ | ✓ | ✓ | ✓ |
+| DTCS | ✓ | ✓ | ✓ | ✓ |
+| Duplex | ✓ | ✓ | ✓ | ✓ |
+| Offset | ✓ | ✓ | ✓ | ✓ |
+| Color Code | ✗ | ✗ | ✓ | ✗ |
+| Max Channels | 10K | 128 | 1K | 500 |
 
 ---
 
@@ -211,14 +208,7 @@ Help → Getting Started ⭐ NEW, RadioReference, How-To, Contact
 5. Save As to additional locations (optional)
 ```
 
-### Professional Setup (DM32UV)
-```
-1. Preferences → Select "Anytone DM32UV"
-2. Choose "High Quality"
-3. View DMR-specific features
-4. Configure location and bands
-5. Export for maximum quality
-```
+
 
 ---
 
