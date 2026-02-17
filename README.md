@@ -101,6 +101,29 @@ Developing and maintaining open source software takes significant time and resou
 
 ## Troubleshooting 🛠️
 
+### Python Environment & Dependency Issues 🐍
+
+**If you encounter numpy/pandas import errors:**
+
+ChirpScrape now supports Python 3.13 with properly compatible dependencies:
+- **numpy 2.4.2+** - Required for Python 3.13 compatibility
+- **pandas 3.0.0+** - Updated for latest numpy and Python versions
+
+**Solution:**
+If you already have an old venv, start fresh:
+
+```bash
+# Remove old environment
+rm -rf .venv
+
+# Create new environment and install dependencies
+python3 -m venv .venv
+source .venv/bin/activate  # (or .\.venv\Scripts\Activate.ps1 on Windows)
+pip install -r requirements.txt
+```
+
+The `bootstrap.py` script handles this automatically, so using it is recommended for a clean installation.
+
 ### RadioReference Index File (`radioref.csv`) 📂
 
 If you see errors or missing data related to RadioReference lookups, or if `radioref.csv` is missing or outdated, you need to (re)generate the index file. Use the helper script below:
