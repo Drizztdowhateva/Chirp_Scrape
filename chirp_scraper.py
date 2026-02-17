@@ -211,6 +211,13 @@ BAND_RANGES = {
     'NOAA': [(162.4, 162.55)],
     'MURS': [(151.82, 154.6)],
     'FRS/GMRS': [(462.0, 467.0)],
+    # Emergency: heuristic ranges covering common public-safety analog bands
+    'Emergency': [
+        (30.0, 50.0),    # Low VHF (some legacy)
+        (138.0, 174.0),  # VHF high-band (public safety)
+        (380.0, 470.0),  # UHF public safety
+        (700.0, 900.0),  # 700/800 MHz public-safety ranges
+    ],
 }
 
 # Radio Model Definitions with Supported Features
@@ -218,6 +225,8 @@ RADIO_MODELS = {
     'Generic': {
         'name': 'Generic Radio (Default)',
         'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -232,6 +241,8 @@ RADIO_MODELS = {
     'DM32UV': {
         'name': 'Anytone DM32UV',
         'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -250,6 +261,8 @@ RADIO_MODELS = {
     'Baofeng_UV5R': {
         'name': 'Baofeng UV-5R',
         'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -264,6 +277,8 @@ RADIO_MODELS = {
     'Baofeng_UV5R_Mini': {
         'name': 'Baofeng UV-5R Mini',
         'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -278,6 +293,8 @@ RADIO_MODELS = {
     'Baofeng_UV82': {
         'name': 'Baofeng UV-82',
         'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -292,6 +309,8 @@ RADIO_MODELS = {
     'Motorola': {
         'name': 'Motorola (Professional)',
         'supports_tone': True,
+        'supports_p25': True,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -300,6 +319,7 @@ RADIO_MODELS = {
         'supports_skip': True,
         'supports_comment': True,
         'supports_color_code': True,
+        'supports_digital_mode': True,
         'max_channels': 1000,
         'tone_frequencies': True,
         'description': 'Professional grade digital/analog radio'
@@ -307,6 +327,8 @@ RADIO_MODELS = {
     'Kenwood': {
         'name': 'Kenwood (VHF/UHF)',
         'supports_tone': True,
+        'supports_p25': True,
+        'supports_edacs': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -317,6 +339,40 @@ RADIO_MODELS = {
         'max_channels': 500,
         'tone_frequencies': True,
         'description': 'Kenwood mobile/portable radios'
+    },
+    'Motorola_APX': {
+        'name': 'Motorola APX Series',
+        'supports_tone': True,
+        'supports_p25': True,
+        'supports_edacs': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'supports_digital_mode': True,
+        'max_channels': 2000,
+        'tone_frequencies': True,
+        'description': 'Professional P25-capable Motorola radios (APX series)'
+    },
+    'Icom_P25': {
+        'name': 'Icom P25-capable',
+        'supports_tone': True,
+        'supports_p25': True,
+        'supports_edacs': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'supports_digital_mode': True,
+        'max_channels': 2000,
+        'tone_frequencies': True,
+        'description': 'Icom radios with P25 capability'
     }
 }
 
@@ -824,6 +880,67 @@ def launch_gui_and_run(default_pages, output_path):
     # Variable to store the last exported DataFrame for Save As
     exported_data = {'dataframe': None, 'row_count': 0}
     exporting_flag = {'running': False}
+    # Queue for messagebox calls when dialogs are suppressed during export
+    _dialog_queue = []
+    _messagebox_origs = {}
+
+    def _suppress_messageboxes(enable=True):
+        nonlocal _messagebox_origs
+        try:
+            if enable:
+                # save originals
+                _messagebox_origs['showinfo'] = messagebox.showinfo
+                _messagebox_origs['showwarning'] = messagebox.showwarning
+                _messagebox_origs['showerror'] = messagebox.showerror
+
+                def _wrap_info(title, msg=None, **kwargs):
+                    if exporting_flag.get('running'):
+                        _dialog_queue.append(('info', title, msg))
+                    else:
+                        _messagebox_origs['showinfo'](title, msg, **kwargs)
+
+                def _wrap_warn(title, msg=None, **kwargs):
+                    if exporting_flag.get('running'):
+                        _dialog_queue.append(('warn', title, msg))
+                    else:
+                        _messagebox_origs['showwarning'](title, msg, **kwargs)
+
+                def _wrap_err(title, msg=None, **kwargs):
+                    if exporting_flag.get('running'):
+                        _dialog_queue.append(('err', title, msg))
+                    else:
+                        _messagebox_origs['showerror'](title, msg, **kwargs)
+
+                messagebox.showinfo = _wrap_info
+                messagebox.showwarning = _wrap_warn
+                messagebox.showerror = _wrap_err
+            else:
+                # restore originals
+                if 'showinfo' in _messagebox_origs:
+                    messagebox.showinfo = _messagebox_origs.get('showinfo')
+                if 'showwarning' in _messagebox_origs:
+                    messagebox.showwarning = _messagebox_origs.get('showwarning')
+                if 'showerror' in _messagebox_origs:
+                    messagebox.showerror = _messagebox_origs.get('showerror')
+        except Exception:
+            pass
+
+    def _flush_dialog_queue():
+        # show queued dialogs now (non-modal) after export completes
+        try:
+            for typ, title, msg in _dialog_queue:
+                try:
+                    if typ == 'info':
+                        _messagebox_origs.get('showinfo', messagebox.showinfo)(title, msg)
+                    elif typ == 'warn':
+                        _messagebox_origs.get('showwarning', messagebox.showwarning)(title, msg)
+                    else:
+                        _messagebox_origs.get('showerror', messagebox.showerror)(title, msg)
+                except Exception:
+                    pass
+            _dialog_queue.clear()
+        except Exception:
+            pass
     band_checkbuttons = {}
     
     # File menu with Exit and Save As
@@ -842,7 +959,6 @@ def launch_gui_and_run(default_pages, output_path):
         progress_window.title('Saving CSV')
         progress_window.resizable(False, False)
         progress_window.transient(root)
-        progress_window.grab_set()
         center_and_clamp(progress_window, 400, 120)
 
         progress_label = tk.Label(progress_window, text='Preparing save...', wraplength=380)
@@ -931,7 +1047,42 @@ def launch_gui_and_run(default_pages, output_path):
         except Exception as e:
             progress_window.destroy()
             messagebox.showerror('Error', f'Failed to save CSV: {e}')
+
+    def on_open_file():
+        # Open a previously saved CSV and load it into exported_data
+        try:
+            path = filedialog.askopenfilename(filetypes=[('CSV files','*.csv'),('All files','*.*')], title='Open CSV file')
+            if not path:
+                return
+            try:
+                import pandas as _pd
+                df = _pd.read_csv(path)
+            except Exception:
+                # Fallback to csv.DictReader then convert to DataFrame if pandas unavailable
+                import csv as _csv
+                rows = []
+                with open(path, newline='', encoding='utf-8') as rf:
+                    reader = _csv.DictReader(rf)
+                    for row in reader:
+                        rows.append(row)
+                try:
+                    import pandas as _pd
+                    df = _pd.DataFrame(rows)
+                except Exception:
+                    # Keep as list of dicts if pandas still unavailable
+                    exported_data['dataframe'] = rows
+                    exported_data['row_count'] = len(rows)
+                    exported_data['pages'] = {}
+                    messagebox.showinfo('Open File', f'Loaded {len(rows)} rows from {path}')
+                    return
+            exported_data['dataframe'] = df
+            exported_data['row_count'] = len(df)
+            exported_data['pages'] = {}
+            messagebox.showinfo('Open File', f'Loaded {len(df)} rows from {path}')
+        except Exception as e:
+            messagebox.showerror('Open File', f'Failed to open file: {e}')
     
+    filemenu.add_command(label='Open File...', command=lambda: on_open_file())
     filemenu.add_command(label='Save As...', command=on_save_as)
     filemenu.add_separator()
     
@@ -1111,6 +1262,9 @@ def launch_gui_and_run(default_pages, output_path):
     def open_baofeng_unlock():
         webbrowser.open('https://www.miklor.com/COM/UV5R_Unlock.php')
     
+    def open_onesdr_unlock():
+        webbrowser.open('https://www.onesdr.com/how-to-unlock-a-baofeng-uv-5r/')
+    
     def open_baofeng_unlock_guide():
         webbrowser.open('https://www.miklor.com/COM/UV5R.php')
     
@@ -1142,8 +1296,10 @@ def launch_gui_and_run(default_pages, output_path):
         title.pack(anchor='w', padx=15, pady=(10, 15))
         
         resources = [
-            ('Baofeng UV-5R Unlock', 'Miklor.com - Complete UV-5R unlock and modification guide', 
+            ('Unlock Firmware — Baofeng UV-5R (Miklor)', 'Miklor.com - Firmware unlock steps and notes; unlocks firmware allowing programming of FRS/GMRS channels', 
              open_baofeng_unlock),
+            ('Unlock Firmware — Baofeng UV-5R (OneSDR)', 'OneSDR - How to unlock a Baofeng UV-5R (steps and notes); firmware unlock to enable GMRS/FRS programming',
+             open_onesdr_unlock),
             ('Baofeng Full Guide', 'Miklor.com - Full UV-5R technical documentation and tricks',
              open_baofeng_unlock_guide),
             ('CHIRP Firmware', 'CHIRP official firmware database and radio programming tool',
@@ -1171,7 +1327,8 @@ def launch_gui_and_run(default_pages, output_path):
     
     firmwaremenu.add_command(label='Firmware Unlock Guide', command=open_firmware_resources)
     firmwaremenu.add_separator()
-    firmwaremenu.add_command(label='Baofeng UV-5R Unlock (Miklor)', command=open_baofeng_unlock)
+    firmwaremenu.add_command(label='Unlock Firmware — Baofeng UV-5R (Miklor)', command=open_baofeng_unlock)
+    firmwaremenu.add_command(label='Unlock Firmware — Baofeng UV-5R (OneSDR)', command=open_onesdr_unlock)
     firmwaremenu.add_command(label='Baofeng Full Guide (Miklor)', command=open_baofeng_unlock_guide)
     firmwaremenu.add_separator()
     firmwaremenu.add_command(label='CHIRP Firmware Database', command=open_chirp_firmware)
@@ -1333,7 +1490,8 @@ def launch_gui_and_run(default_pages, output_path):
     preferences_data = {
         'selected_model': tk.StringVar(value='Generic'),
         'customization_level': tk.StringVar(value='Default'),
-        'model_features': {}
+        'model_features': {},
+        'frs_gmrs_unlock': tk.IntVar(value=0)
     }
     
     def open_preferences():
@@ -1386,6 +1544,12 @@ def launch_gui_and_run(default_pages, output_path):
         model_desc_var = tk.StringVar(value=RADIO_MODELS['Generic']['description'])
         desc_label = tk.Label(radio_scrollable_frame, textvariable=model_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
         desc_label.pack(anchor='w', padx=10, pady=(0, 15))
+
+        # Option: Treat FRS/GMRS as unlocked (enable bandplan/programming on unlocked radios)
+        frs_pref_var = preferences_data.get('frs_gmrs_unlock') if preferences_data.get('frs_gmrs_unlock') else tk.IntVar(value=0)
+        frs_pref_cb = tk.Checkbutton(radio_scrollable_frame, text='Treat FRS/GMRS as unlocked (enable bandplan/programming)', variable=frs_pref_var)
+        frs_pref_cb.pack(anchor='w', padx=10, pady=(6, 12))
+        ToolTip(frs_pref_cb, 'Check if your Baofeng is firmware-unlocked to allow programming FRS/GMRS channels')
         
         # Model features display
         tk.Label(radio_scrollable_frame, text='Supported Features:', font=('Arial', 9, 'bold')).pack(anchor='w', padx=10, pady=(5, 5))
@@ -1619,7 +1783,8 @@ def launch_gui_and_run(default_pages, output_path):
     # Make window wider to fit content and provide an area on the right for a QR image
     root.geometry('1100x700')
     root.resizable(True, True)
-    root.grid_columnconfigure(3, weight=1)
+    # Reserve a fixed right column for the QR image so it doesn't overlap inputs
+    root.grid_columnconfigure(3, minsize=260, weight=0)
 
     # Load and display CashApp QR on the right-hand area if available
     try:
@@ -1649,7 +1814,19 @@ def launch_gui_and_run(default_pages, output_path):
         if qr_img:
             img_label = tk.Label(root, image=qr_img)
             img_label.image = qr_img
-            img_label.grid(row=0, column=3, rowspan=12, padx=12, pady=8, sticky='n')
+            # Grid the QR into the reserved right column so it cannot overlap the entry fields
+            img_label.grid(row=0, column=3, rowspan=12, padx=12, pady=8, sticky='ne')
+
+            # Separate clickable note under the QR code pointing to the Donations menu
+            try:
+                note = tk.Label(root, text='Donation options available in Help: Contact > Donations', wraplength=240, justify='center', font=('Arial', 9, 'underline'), fg='#0066cc', cursor='hand2')
+                note.grid(row=12, column=3, padx=12, pady=(2,12), sticky='n')
+                try:
+                    note.bind('<Button-1>', lambda e: open_donations())
+                except Exception:
+                    pass
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1793,10 +1970,10 @@ def launch_gui_and_run(default_pages, output_path):
 
     for i, iv in enumerate(input_vars, start=1):
         label = tk.Label(root, text=f'Zip Code {i}:')
-        label.grid(row=i-1, column=0, sticky='e')
+        label.grid(row=i-1, column=0, sticky='w')
         ToolTip(label, 'Enter a 5-digit ZIP code or RadioReference URL\nto search for frequencies in that area')
         
-        ent = tk.Entry(root, textvariable=iv, width=28)
+        ent = tk.Entry(root, textvariable=iv, width=12)
         ent.grid(row=i-1, column=1, sticky='w')
         ToolTip(ent, 'ZIP Code: Searches for repeaters in that area\nURL: Directly uses RadioReference page')
         
@@ -1846,6 +2023,8 @@ def launch_gui_and_run(default_pages, output_path):
             ToolTip(cb, 'MURS (151.82-154.6 MHz)\nMulti-Use Radio Service - license-free')
         elif band == 'FRS/GMRS':
             ToolTip(cb, 'FRS/GMRS (462-467 MHz)\nFamily Radio Service / General Mobile Radio Service')
+        elif band == 'Emergency':
+            ToolTip(cb, 'Emergency / Public Safety dispatch frequencies\nSearches county/zip pages for Police/Fire/EMS analog channels')
         
         if v.get():
             band_listbox.insert(tk.END, band)
@@ -1879,12 +2058,23 @@ def launch_gui_and_run(default_pages, output_path):
     down_btn.grid(row=start_row+1+len(BAND_RANGES), column=1, sticky='e', padx=8)
     ToolTip(down_btn, 'Move selected band down in priority')
 
+    # Checkbox to ensure FRS/GMRS frequencies are treated as unlocked and enable bandplan
+    frs_unlock_var = preferences_data.get('frs_gmrs_unlock') if preferences_data.get('frs_gmrs_unlock') else tk.IntVar(value=0)
+    frs_unlock_cb = tk.Checkbutton(root, text='Ensure FRS/GMRS unlocked & enable bandplan', variable=frs_unlock_var)
+    frs_unlock_cb.grid(row=start_row+1+len(BAND_RANGES)+1, column=0, sticky='w', padx=8, pady=4)
+    ToolTip(frs_unlock_cb, 'Mark FRS/GMRS fixed channels as unlocked for programming (requires firmware unlock on your radio)')
+
     # Export button (centered at bottom)
     def on_export():
         if exporting_flag.get('running'):
             messagebox.showwarning('Export', 'An export is already running. Please wait.')
             return
         exporting_flag['running'] = True
+        # suppress dialogs while exporting to avoid per-row popups
+        try:
+            _suppress_messageboxes(True)
+        except Exception:
+            pass
         try:
             export_btn.config(state='disabled')
         except Exception:
@@ -1938,29 +2128,19 @@ def launch_gui_and_run(default_pages, output_path):
             messagebox.showerror('Error', 'Select at least one band to export')
             return
 
+        # Determine selected model and customization level for filtering
+        sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
+        model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
+        model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
+        cust_level = preferences_data.get('customization_level').get() if preferences_data.get('customization_level') else 'Default'
+
         # run scraping and filter by selected bands
         rows = []
-        # Show a progress window while fetching pages so user sees percentage
-        try:
-            fetch_total = max(1, len(pages))
-            fetch_progress = 0
-            fetch_window = tk.Toplevel(root)
-            fetch_window.title('Fetching frequencies...')
-            fetch_window.geometry('420x120')
-            fetch_window.resizable(False, False)
-            fetch_window.transient(root)
-            fetch_window.grab_set()
-            center_and_clamp(fetch_window, 420, 120)
-            fetch_label = tk.Label(fetch_window, text='Fetching pages and collating frequencies...', wraplength=400)
-            fetch_label.pack(pady=8)
-            fetch_bar = ttk.Progressbar(fetch_window, mode='determinate', length=380, maximum=fetch_total, value=0)
-            fetch_bar.pack(pady=6)
-            fetch_status = tk.Label(fetch_window, text='0% (0/{})'.format(fetch_total), font=('Arial', 9))
-            fetch_status.pack()
-            fetch_window.update()
-        except Exception:
-            fetch_window = None
-            fetch_bar = None
+        # Skip showing a fetch progress window; perform fetching silently
+        fetch_total = max(1, len(pages))
+        fetch_progress = 0
+        fetch_bar = None
+        fetch_status = None
 
         page_idx = 0
         for c, u in pages.items():
@@ -1973,6 +2153,62 @@ def launch_gui_and_run(default_pages, output_path):
                         duplex_hint, offset_hint = (None, None)
                     # determine which band this frequency belongs to (first matching selected band)
                     band_label = None
+                    # Special-case: Emergency matching by keyword or common public-safety ranges
+                    try:
+                        if 'Emergency' in sel_bands:
+                            lname = (name or '').lower()
+                            detected_protocol = None
+                            # base keywords
+                            emergency_keywords = ['dispatch', 'police', 'fire', 'sheriff', 'ems', 'ambulance', 'emergency', 'public safety']
+                            # digital protocol tokens
+                            p25_tokens = ['p25', 'project 25']
+                            edacs_tokens = ['edacs']
+                            other_digital = ['dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital']
+
+                            match = False
+                            # keyword match (loose)
+                            for kw in emergency_keywords:
+                                if kw in lname:
+                                    match = True
+                                    break
+
+                            # frequency-range match (always allowed)
+                            if not match:
+                                for lo, hi in BAND_RANGES.get('Emergency', []):
+                                    try:
+                                        if lo <= float(f) <= hi:
+                                            match = True
+                                            break
+                                    except Exception:
+                                        continue
+
+                            # Advanced: tighten matching and allow P25/EDACS detection
+                            if match and cust_level in ('Advanced', 'High Quality'):
+                                # detect explicit protocol tokens
+                                if any(t in lname for t in p25_tokens):
+                                    detected_protocol = 'P25'
+                                elif any(t in lname for t in edacs_tokens):
+                                    detected_protocol = 'EDACS'
+                                # if other digital types are present and model does not support general digital, skip
+                                if any(t in lname for t in other_digital) and not model_obj.get('supports_digital_mode'):
+                                    match = False
+
+                            # Final acceptance: if protocol detected, ensure model supports it (only in advanced)
+                            if detected_protocol:
+                                if detected_protocol == 'P25' and not model_obj.get('supports_p25'):
+                                    match = False
+                                if detected_protocol == 'EDACS' and not model_obj.get('supports_edacs'):
+                                    match = False
+
+                            # If matched and not rejected by digital incompatibility, mark Emergency
+                            if match:
+                                # if we detected a protocol, attach it to the tuple via a small wrapper by setting band_label
+                                band_label = 'Emergency'
+                                # store detected protocol into a temporary variable attached to name for later propagation
+                                if detected_protocol:
+                                    name = f"{name} [{detected_protocol}]"
+                    except Exception:
+                        pass
                     for band in sel_bands:
                         ranges = BAND_RANGES.get(band, [])
                         for lo, hi in ranges:
@@ -1991,11 +2227,8 @@ def launch_gui_and_run(default_pages, output_path):
         # update fetch progress after each page processed
         try:
             page_idx += 1
-            if fetch_bar is not None:
-                fetch_bar['value'] = page_idx
-                pct = int((page_idx / float(fetch_total)) * 100)
-                fetch_status.config(text=f'{pct}% ({page_idx}/{fetch_total})')
-                fetch_window.update()
+            # no fetch progress UI when running silently
+            pass
         except Exception:
             pass
 
@@ -2052,6 +2285,11 @@ def launch_gui_and_run(default_pages, output_path):
                 return ('Tone', val, val)
             return (t, '', '')
 
+        # Determine selected model object for compatibility filtering
+        sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
+        model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
+        model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
+
         df_rows = []
         for r in rows:
             name = r.get('Name','')
@@ -2063,9 +2301,33 @@ def launch_gui_and_run(default_pages, output_path):
             tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
             dtcs = '023' if rTone else ''
             dtcs_pol = 'NN' if rTone else ''
-            # Remove scanned entries that lack an rTone value. Preserve fixed band lists.
+            # Remove scanned entries that lack an rTone value. Preserve fixed band lists (NOAA/MURS/FRS_GMRS).
+            # Treat 'Emergency' like other scanned bands (require tone/validation similar to 2m/70cm).
             if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS'):
                 continue
+            # For Emergency entries, allow P25/EDACS when supported and when in Advanced quality;
+            # allow analog emergency channels even without tone. Filter other digital types unless model supports them.
+            if band == 'Emergency':
+                lname = (name or '').lower()
+                # If annotated with detected protocol (from earlier), respect it
+                protocol = None
+                m = re.search(r'\[(P25|EDACS)\]$', name)
+                if m:
+                    protocol = m.group(1)
+                # If protocol present, ensure model supports it and that advanced quality is selected
+                if protocol:
+                    if cust_level not in ('Advanced', 'High Quality'):
+                        continue
+                    if protocol == 'P25' and not model_obj.get('supports_p25'):
+                        continue
+                    if protocol == 'EDACS' and not model_obj.get('supports_edacs'):
+                        continue
+                else:
+                    # no explicit protocol: if entry references other digital trunking (DMR/NXDN/etc), allow only when model has digital support and advanced quality
+                    other_digital = ('dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital')
+                    if any(d in lname for d in other_digital):
+                        if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
+                            continue
             df_rows.append({
                 'Name': name,
                 'Frequency': freq,
@@ -2083,25 +2345,24 @@ def launch_gui_and_run(default_pages, output_path):
             })
 
         # Create progress window
-            progress_window = tk.Toplevel(root)
+        progress_window = tk.Toplevel(root)
         progress_window.title('Exporting CSV')
         progress_window.geometry('400x120')
         progress_window.resizable(False, False)
         progress_window.transient(root)
-        progress_window.grab_set()
-        
+
         center_and_clamp(progress_window, 400, 120)
-        
+
         progress_label = tk.Label(progress_window, text='Processing and building CSV...', wraplength=380)
         progress_label.pack(pady=10)
-        
+
         progress_bar = ttk.Progressbar(progress_window, mode='indeterminate', length=360)
         progress_bar.pack(pady=10, padx=20)
         progress_bar.start()
-        
+
         progress_status = tk.Label(progress_window, text='', font=('Arial', 9))
         progress_status.pack(pady=5)
-        
+
         def update_progress(msg):
             progress_status.config(text=msg)
             progress_window.update()
@@ -2204,6 +2465,15 @@ def launch_gui_and_run(default_pages, output_path):
                 pass
             messagebox.showerror('Error', f'Failed to export CSV: {e}')
         finally:
+            # restore messagebox behavior and flush any queued dialogs
+            try:
+                _suppress_messageboxes(False)
+            except Exception:
+                pass
+            try:
+                _flush_dialog_queue()
+            except Exception:
+                pass
             exporting_flag['running'] = False
             try:
                 export_btn.config(state='normal')

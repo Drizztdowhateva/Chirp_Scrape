@@ -1,6 +1,6 @@
 # 📱 ChirpScrape Social Media & Community Integration
 
-**Version**: 2.2.0  
+**Version**: 2.2.1  
 **Status**: ✅ Security Audit Passed  
 **Community Ready**: February 4, 2026
 
@@ -201,6 +201,37 @@ https://chirpscrape.example.com/transparency
 ```
 
 ---
+
+## 🔊 Security & Audio
+
+### Audio Handling & Privacy
+- **Strip metadata**: Remove ID3/EXIF and any embedded geolocation or device identifiers before sharing audio samples.
+- **Avoid PII**: Do not include names, phone numbers, or precise locations in shared audio clips.
+- **Recommended formats**: Use WAV (44.1kHz/16-bit) for raw samples or AAC/MP3 (>=128kbps) for compressed sharing.
+
+### Secure Transport & Storage
+- **Encrypt attachments**: Encrypt audio files in transit and at rest. Use a proven symmetric scheme (e.g., Fernet) and store keys securely.
+- **Fingerprinting**: Compute a SHA-256 hash of audio files for integrity checks and optional provenance tracking.
+
+### Automated Sanitization
+- Implement a sanitization pipeline that strips metadata, normalizes sample rates, and redacts sensitive segments when required.
+- Provide captions/transcripts for accessibility; redact timestamps or location phrases during transcript generation if needed.
+
+### Example: simple client-side encryption (Python)
+```python
+from cryptography.fernet import Fernet
+
+# WARNING: store `key` securely; do NOT hardcode in production
+key = Fernet.generate_key()
+cipher = Fernet(key)
+with open('sample.wav', 'rb') as fh:
+  encrypted = cipher.encrypt(fh.read())
+with open('sample.wav.enc', 'wb') as out:
+  out.write(encrypted)
+```
+
+**Note:** Share encrypted files only with explicit consent and provide key exchange over a secure channel.
+
 
 ## 🚀 Community Features (Future)
 

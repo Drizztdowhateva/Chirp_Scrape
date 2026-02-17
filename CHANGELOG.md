@@ -92,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated Getting Started guide with Baofeng variants
 - New firmware unlock resources and links
 - Comprehensive setting descriptions
-- Professional release notes (New_media_22.md)
+  - Professional release notes (Advert/New_media_22.md)
 
 ---
 

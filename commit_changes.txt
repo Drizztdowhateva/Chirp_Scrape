@@ -1,0 +1,27 @@
+Commit: 1f61114
+Author: (local commit)
+Date: (recent)
+
+Message: Add progress meter and improved filename/window handling for CSV export
+
+Summary:
+- Added determinate row-by-row progress meters for Export and Save As flows
+- Implemented default filename convention: Chirp_$Model_$Zipcodes[_count]_ $Month
+  - Joins up to 6 ZIPs with '-' (e.g. 60601-60602-60603)
+  - Falls back to firstZIP[count] if >6 ZIPs
+- Save As now uses the same naming convention and writes with a progress bar
+- Stored `exported_data['pages']` so Save As can build sensible defaults
+- Added `center_and_clamp()` helper to center and clamp Toplevel windows
+  so dialogs and confirmation buttons remain on-screen
+- Applied centering/clamping to: Export progress, Save As progress, Preferences,
+  Getting Started, Firmware Resources, SOAP Debug dialogs
+- Adjusted Preferences minimum size relative to screen
+
+Files changed:
+- chirp_scraper.py (modified)
+
+Notes:
+- Commit pushed to remote 'origin/main' successfully.
+- Untracked files remain in the repo root (not added to this commit).
+
+If you want a different filename or format for this file, tell me and I will update it.
