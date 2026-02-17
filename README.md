@@ -1,7 +1,7 @@
 
 # Chirp RadioReference Scraper 🚀
 
-![ChirpScrape screenshot](media/ChirpScrape_screenshot.png)
+![ChirpScrape screenshot](https://raw.githubusercontent.com/Drizztdowhateva/Chirp_Scrape/main/media/26Feb_16_ChirpScrape.png)
 
 This project uses a small index file, `radioref.csv`, to map RadioReference CTID pages (county/city titles) to their numeric CTID IDs. This file is required for ZIP-to-CTID mapping in the GUI and for accurate RadioReference lookups.
 
