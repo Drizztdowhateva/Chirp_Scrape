@@ -1816,6 +1816,17 @@ def launch_gui_and_run(default_pages, output_path):
             img_label.image = qr_img
             # Grid the QR into the reserved right column so it cannot overlap the entry fields
             img_label.grid(row=0, column=3, rowspan=12, padx=12, pady=8, sticky='ne')
+
+            # Separate clickable note under the QR code pointing to the Donations menu
+            try:
+                note = tk.Label(root, text='Donation options available in Help: Contact > Donations', wraplength=240, justify='center', font=('Arial', 9, 'underline'), fg='#0066cc', cursor='hand2')
+                note.grid(row=12, column=3, padx=12, pady=(2,12), sticky='n')
+                try:
+                    note.bind('<Button-1>', lambda e: open_donations())
+                except Exception:
+                    pass
+            except Exception:
+                pass
     except Exception:
         pass
 

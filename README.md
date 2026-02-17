@@ -119,6 +119,10 @@ Run this command to crawl RadioReference and build or refresh the index:
 
 See `README.txt` for additional project notes.
 
+**Help → Firmware submenu:** New firmware unlock resources (Baofeng unlock guides and firmware links) are available in the app under the **Help → Firmware** menu. See the in-app Help for step-by-step links and resources.
+
+**Advertising & Media:** Advertising copy and media (including the Facebook advert) are available in the `Advert/` folder. See `Advert/Facebook.md` for Facebook-specific ad content.
+
 ## Legal ⚖️
 
 This software is provided as-is. When scraping websites, ensure you follow the target site's terms of service and robots.txt. The author is not responsible for misuse.

@@ -8,3 +8,6 @@ __pycache__/
 # Local output files
 chirp_output.csv
 chirp_output_*.csv
+
+# Local backups
+.backup/

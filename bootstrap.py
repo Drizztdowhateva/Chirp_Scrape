@@ -51,6 +51,19 @@ def main():
     py = ensure_venv()
     install_requirements(py)
 
+    # Ensure a canonical screenshot filename is present for README and media references.
+    try:
+        src = os.path.join(HERE, 'media', '26Feb_16_ChirpScrape.png')
+        dst = os.path.join(HERE, 'media', 'ChirpScrape_screenshot.png')
+        if os.path.exists(src) and not os.path.exists(dst):
+            try:
+                shutil.copy2(src, dst)
+                print(f'Created canonical screenshot: {dst}')
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     if args.install_only:
         print('Installation complete.')
         return
