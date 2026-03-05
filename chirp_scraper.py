@@ -1329,6 +1329,50 @@ def launch_gui_and_run(default_pages, output_path):
     firmwaremenu.add_command(label='CHIRP Programming Guides (John Miklor)', command=open_miklor_chirp_guide)
     firmwaremenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS)', command=open_chirp_github)
     helpmenu.add_cascade(label='Firmware', menu=firmwaremenu)
+
+    # Videos submenu — John Miklor (WA9QJV) video tutorials
+    videosmenu = tk.Menu(helpmenu, tearoff=0)
+
+    def open_miklor_youtube():
+        webbrowser.open('https://www.youtube.com/@wa9qjv')
+
+    def open_miklor_chirp_videos():
+        webbrowser.open('https://www.miklor.com/CHIRP/index.php')
+
+    def open_miklor_baofeng_videos():
+        webbrowser.open('https://www.miklor.com/uv5r/')
+
+    videosmenu.add_command(label='John Miklor (WA9QJV) — YouTube Channel', command=open_miklor_youtube)
+    videosmenu.add_separator()
+    videosmenu.add_command(label='CHIRP Programming Videos (Miklor)', command=open_miklor_chirp_videos)
+    videosmenu.add_command(label='Baofeng UV-5R Videos (Miklor)', command=open_miklor_baofeng_videos)
+    helpmenu.add_cascade(label='Videos', menu=videosmenu)
+
+    # Chirp submenu — CHIRP project references (Dan Smith KK7DS / Jim Unroe KC9HI)
+    chirpmenu = tk.Menu(helpmenu, tearoff=0)
+
+    def open_chirp_site():
+        webbrowser.open('https://chirp.danplanet.com/')
+
+    def open_chirp_project_github():
+        webbrowser.open('https://github.com/kk7ds/chirp')
+
+    def open_chirp_downloads():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/Download')
+
+    def open_chirp_daily_builds():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/Download#Daily-images')
+
+    def open_chirp_getting_started():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/GettingStarted')
+
+    chirpmenu.add_command(label='CHIRP Website (Dan Smith KK7DS)', command=open_chirp_site)
+    chirpmenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS / Jim Unroe KC9HI)', command=open_chirp_project_github)
+    chirpmenu.add_separator()
+    chirpmenu.add_command(label='CHIRP Downloads', command=open_chirp_downloads)
+    chirpmenu.add_command(label='CHIRP Daily Builds', command=open_chirp_daily_builds)
+    chirpmenu.add_command(label='CHIRP Getting Started Guide', command=open_chirp_getting_started)
+    helpmenu.add_cascade(label='CHIRP', menu=chirpmenu)
     
     # SOAP Debug submenu
     def open_soap_debug():
