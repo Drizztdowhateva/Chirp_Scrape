@@ -11,7 +11,7 @@
 - ✅ **Cryptography Library**: Fernet encryption (AES-128)
 - ✅ **API Key Encryption**: Password-based key derivation (PBKDF2)
 - ✅ **Encrypted Storage**: rr_api.enc file
-- ✅ **No Hardcoded Secrets**: All credentials externalized
+- ✅ **No Hardcoded Secrets**: All credentials externalized (hardcoded key removed in v2.2.1)
 - ✅ **Key Rotation**: Passphrase-based re-encryption support
 
 ### Input Validation & Sanitization
