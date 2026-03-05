@@ -7,6 +7,14 @@
 # https://www.radioreference.com/db/browse/ctid/<id>/ham pages and writing
 # `radioref.csv`. If `radioref.csv` is missing or you want to refresh RadioReference
 # data, run `make_radioref_list.py` before using this program.
+#
+# References & Acknowledgements:
+#   RadioReference.com    — frequency database (https://www.radioreference.com)
+#   CHIRP                 — open-source radio programming software (https://chirp.danplanet.com)
+#                           GitHub repo owner: Dan Smith (KK7DS) — https://github.com/kk7ds/chirp
+#                           Lead developer/maintainer: Jim Unroe (KC9HI)
+#   John Miklor (WA9QJV) — comprehensive CHIRP programming guides & Baofeng resources
+#                           https://www.miklor.com/CHIRP/index.php
 
 import subprocess
 import os
@@ -115,23 +123,9 @@ try:
                             RR_API_KEY = None
                 except Exception:
                     RR_API_KEY = None
-            # If we still don't have a key, create the built-in encrypted key and use it
-            if RR_API_KEY is None:
-                try:
-                    import secrets
-                    builtin = 'fcb8749c-f4c9-11f0-bb32-0ef97433b5f9'
-                    p = secrets.token_urlsafe(24)
-                    _rr_api.encrypt_api_key(builtin, p, outpath=enc_path)
-                    try:
-                        with open(passfile, 'w', encoding='utf-8') as pf:
-                            pf.write(p)
-                        os.chmod(passfile, 0o600)
-                    except Exception:
-                        pass
-                    os.environ['RR_API_PASS'] = p
-                    RR_API_KEY = builtin
-                except Exception:
-                    RR_API_KEY = None
+            # No built-in key is bundled; users must supply their own via RR_API_KEY
+            # or RR_API_PASS environment variables, or through the Preferences dialog.
+            # (Hardcoding an API key in source is a security risk and has been removed.)
 except Exception:
     pass
 
@@ -435,67 +429,11 @@ def valid_freq(f):
     return any(lo <= fv <= hi for lo, hi in VALID_BANDS)
 
 def scrape_rr(url):
+    """Fetch `url` and return parsed frequency rows via parse_rr_html."""
     headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"}
     resp = requests.get(url, headers=headers, timeout=15)
-    soup = BeautifulSoup(resp.text, "html.parser")
-    out = []
-    # Radioreference uses tables with class 'rrdbTable' for frequency lists
-    for table in soup.select("table.rrdbTable"):
-        for tr in table.select("tbody tr"):
-            td = tr.find_all("td")
-            if len(td) < 3:
-                continue
-            # primary frequency is in first column
-            ftext = td[0].text.strip()
-            try:
-                f = float(ftext)
-            except Exception:
-                # skip rows without numeric frequency
-                continue
-            if not valid_freq(f):
-                continue
-            # default extraction: callsign (col 2), tone (col 4), description (col 7)
-            callsign = td[2].text.strip() if len(td) > 2 else ""
-            tone = td[4].text.strip() if len(td) > 4 else ""
-            desc = ""
-            for idx in (7, 6, 3):
-                if idx < len(td):
-                    txt = td[idx].text.strip()
-                    if txt:
-                        desc = txt
-                        break
-            # prefer callsign, otherwise description
-            name = callsign or desc or ""
-            # try to parse duplex/offset hints from the remaining cells (skip first col which is freq)
-            duplex_hint = None
-            offset_hint = None
-            try:
-                other_texts = ' '.join(td[i].text.strip() for i in range(1, len(td)))
-                # look for explicit plus/minus tokens indicating duplex
-                if re.search(r'\b\+\b', other_texts) or re.search(r'\bplus\b', other_texts, re.I):
-                    duplex_hint = '+'
-                elif re.search(r'\b\-\b', other_texts) or re.search(r'\bminus\b', other_texts, re.I):
-                    duplex_hint = '-'
-                # find numeric offsets like 0.600 or 5.000 (common RR format)
-                nums = re.findall(r'([0-9]+\.[0-9]+)', other_texts)
-                for n in nums:
-                    try:
-                        nv = float(n)
-                    except Exception:
-                        continue
-                    if abs(nv - 0.6) < 0.001 or abs(nv - 5.0) < 0.01 or abs(nv - 0.600) < 0.001 or abs(nv - 5.000) < 0.01:
-                        offset_hint = nv
-                        # try to find sign near the number
-                        m = re.search(r'([\+\-])\s*' + re.escape(n), other_texts)
-                        if m:
-                            duplex_hint = m.group(1)
-                        break
-            except Exception:
-                pass
-
-            out.append((name, f, tone, duplex_hint, offset_hint))
-    return out
-    
+    resp.raise_for_status()
+    return parse_rr_html(resp.text)
 
 
 def parse_rr_html(html_text):
@@ -597,8 +535,8 @@ def fetch_freqs_for_page(url):
                 return parse_rr_html(resp.text)
     except Exception:
         pass
-    # fallback
-        return scrape_rr(url)
+    # fallback: always scrape directly when API path is unavailable or returns nothing
+    return scrape_rr(url)
 
 def get_pages_from_user():
     """Get a dict of {label: url} from the user.
@@ -1221,7 +1159,80 @@ def launch_gui_and_run(default_pages, output_path):
     contactmenu.add_command(label='Donations', command=open_donations)
     contactmenu.add_command(label='GitHub Project', command=open_github)
     helpmenu.add_cascade(label='Contact', menu=contactmenu)
-    
+
+    # Improvements submenu — extra options and suggestions for power users
+    improvemenu = tk.Menu(helpmenu, tearoff=0)
+
+    def show_improvement_options():
+        """Show a dialog listing suggested improvements and next-step options."""
+        dlg = tk.Toplevel(root)
+        dlg.title('Suggested Improvements & Extra Options')
+        dlg.resizable(True, True)
+        center_and_clamp(dlg, 750, 580)
+
+        canvas = tk.Canvas(dlg)
+        scrollbar = ttk.Scrollbar(dlg, orient='vertical', command=canvas.yview)
+        sf = tk.Frame(canvas)
+        sf.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.create_window((0, 0), window=sf, anchor='nw')
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        tk.Label(sf, text='💡 Suggested Improvements & Extra Options',
+                 font=('Arial', 12, 'bold')).pack(anchor='w', padx=15, pady=(12, 6))
+
+        improvements = [
+            ('📦 Batch ZIP Processing',
+             'Import a list of ZIP codes from a text file and export one combined CSV — useful for'
+             ' building channel lists that span multiple counties or regions.'),
+            ('📤 Multiple Export Formats',
+             'Export to additional formats beyond CHIRP CSV: Kenwood MCP, Icom CS, RT Systems,'
+             ' or plain-text frequency lists that can be pasted into other programming software.'),
+            ('🔍 Frequency Deduplication',
+             'Detect and merge duplicate frequencies that appear across multiple RadioReference'
+             ' pages, keeping the entry with the most metadata (tone, name, description).'),
+            ('⏱ Scheduled Refresh',
+             'Optionally re-fetch RadioReference pages on a configurable schedule so your'
+             ' channel list stays up-to-date without manual intervention.'),
+            ('🌐 Offline / Cached Mode',
+             'Cache the last successful scrape result per URL so the app can be used offline,'
+             ' falling back to cached data when RadioReference is unreachable.'),
+            ('📊 Frequency Statistics',
+             'Show a summary panel after export: number of channels per band, tone distribution,'
+             ' and most-common repeater offsets — helpful for spotting data-quality issues.'),
+            ('🔒 GMRS License Checker',
+             'Optional reminder that GMRS operation requires an FCC license; add a gentle'
+             ' warning when exporting GMRS channels without a stored license number.'),
+            ('🛰 P25 / DMR Channel Tagging',
+             'Auto-detect P25 and DMR systems from RadioReference tags and annotate exported'
+             ' channels so they can be filtered or highlighted in a compatible radio.'),
+            ('📝 Notes & Labels',
+             'Allow the user to attach free-text notes to individual channels before exporting,'
+             ' stored in the CHIRP Comment field.'),
+            ('🎨 Theme Customization',
+             'Expose all theme colors in the Preferences dialog so users can fully'
+             ' personalize the UI appearance without editing source code.'),
+        ]
+
+        for title_text, desc in improvements:
+            tk.Label(sf, text=title_text, font=('Arial', 10, 'bold'),
+                     justify='left').pack(anchor='w', padx=15, pady=(8, 2))
+            tk.Label(sf, text=desc, font=('Arial', 9), justify='left',
+                     wraplength=700, fg='#444444').pack(anchor='w', padx=30, pady=(0, 6))
+
+        tk.Label(sf, text='👉 Have an idea? Open an issue on GitHub!',
+                 font=('Arial', 9, 'italic'), fg='#0066cc').pack(anchor='w', padx=15, pady=(10, 6))
+
+        def _open_issues():
+            webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape/issues')
+        tk.Button(sf, text='Open GitHub Issues', command=_open_issues,
+                  bg='#0066cc', fg='white', font=('Arial', 9, 'bold')).pack(anchor='w', padx=15, pady=(0, 15))
+
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+    improvemenu.add_command(label='Suggested Improvements…', command=show_improvement_options)
+    helpmenu.add_cascade(label='Improvements', menu=improvemenu)
+
     # Firmware submenu
     firmwaremenu = tk.Menu(helpmenu, tearoff=0)
     
@@ -1236,6 +1247,16 @@ def launch_gui_and_run(default_pages, output_path):
     
     def open_chirp_firmware():
         webbrowser.open('https://chirp.danplanet.com/')
+
+    # John Miklor (WA9QJV) — author of the definitive CHIRP programming guides at miklor.com
+    def open_miklor_chirp_guide():
+        webbrowser.open('https://www.miklor.com/CHIRP/index.php')
+
+    # CHIRP open-source project on GitHub
+    # Repo owner: Dan Smith (KK7DS) — github.com/kk7ds/chirp
+    # Lead developer/maintainer: Jim Unroe (KC9HI)
+    def open_chirp_github():
+        webbrowser.open('https://github.com/kk7ds/chirp')
     
     def open_firmware_resources():
         resources_window = tk.Toplevel(root)
@@ -1270,6 +1291,13 @@ def launch_gui_and_run(default_pages, output_path):
              open_baofeng_unlock_guide),
             ('CHIRP Firmware', 'CHIRP official firmware database and radio programming tool',
              open_chirp_firmware),
+            ('CHIRP Programming Guides (John Miklor, WA9QJV)',
+             'Miklor.com — Comprehensive CHIRP radio programming tutorials and channel guides by John Miklor (WA9QJV)',
+             open_miklor_chirp_guide),
+            ('CHIRP GitHub (Dan Smith KK7DS / Jim Unroe KC9HI)',
+             'Official CHIRP open-source project on GitHub — repo owner: Dan Smith (KK7DS),'
+             ' lead developer: Jim Unroe (KC9HI). Report bugs, browse source, download releases.',
+             open_chirp_github),
         ]
         
         for title_text, desc, cmd in resources:
@@ -1298,7 +1326,53 @@ def launch_gui_and_run(default_pages, output_path):
     firmwaremenu.add_command(label='Baofeng Full Guide (Miklor)', command=open_baofeng_unlock_guide)
     firmwaremenu.add_separator()
     firmwaremenu.add_command(label='CHIRP Firmware Database', command=open_chirp_firmware)
+    firmwaremenu.add_command(label='CHIRP Programming Guides (John Miklor)', command=open_miklor_chirp_guide)
+    firmwaremenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS)', command=open_chirp_github)
     helpmenu.add_cascade(label='Firmware', menu=firmwaremenu)
+
+    # Videos submenu — John Miklor (WA9QJV) video tutorials
+    videosmenu = tk.Menu(helpmenu, tearoff=0)
+
+    def open_miklor_youtube():
+        webbrowser.open('https://www.youtube.com/@wa9qjv')
+
+    def open_miklor_chirp_videos():
+        webbrowser.open('https://www.miklor.com/CHIRP/index.php')
+
+    def open_miklor_baofeng_videos():
+        webbrowser.open('https://www.miklor.com/uv5r/')
+
+    videosmenu.add_command(label='John Miklor (WA9QJV) — YouTube Channel', command=open_miklor_youtube)
+    videosmenu.add_separator()
+    videosmenu.add_command(label='CHIRP Programming Videos (Miklor)', command=open_miklor_chirp_videos)
+    videosmenu.add_command(label='Baofeng UV-5R Videos (Miklor)', command=open_miklor_baofeng_videos)
+    helpmenu.add_cascade(label='Videos', menu=videosmenu)
+
+    # Chirp submenu — CHIRP project references (Dan Smith KK7DS / Jim Unroe KC9HI)
+    chirpmenu = tk.Menu(helpmenu, tearoff=0)
+
+    def open_chirp_site():
+        webbrowser.open('https://chirp.danplanet.com/')
+
+    def open_chirp_project_github():
+        webbrowser.open('https://github.com/kk7ds/chirp')
+
+    def open_chirp_downloads():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/Download')
+
+    def open_chirp_daily_builds():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/Download#Daily-images')
+
+    def open_chirp_getting_started():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/GettingStarted')
+
+    chirpmenu.add_command(label='CHIRP Website (Dan Smith KK7DS)', command=open_chirp_site)
+    chirpmenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS / Jim Unroe KC9HI)', command=open_chirp_project_github)
+    chirpmenu.add_separator()
+    chirpmenu.add_command(label='CHIRP Downloads', command=open_chirp_downloads)
+    chirpmenu.add_command(label='CHIRP Daily Builds', command=open_chirp_daily_builds)
+    chirpmenu.add_command(label='CHIRP Getting Started Guide', command=open_chirp_getting_started)
+    helpmenu.add_cascade(label='CHIRP', menu=chirpmenu)
     
     # SOAP Debug submenu
     def open_soap_debug():
