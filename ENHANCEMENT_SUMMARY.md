@@ -95,13 +95,13 @@ Organized menu system:
 
 ## Key Files Modified
 
-### `/home/blackmox/code/Chirp_Scrape-main/chirp_scraper.py`
+### `chirp_scraper.py`
 - Added 400+ lines of new code
 - All backward compatible
 - Full error handling
 - Professional documentation in code
 
-### `/home/blackmox/code/Chirp_Scrape-main/FEATURES_GUIDE.md` (NEW)
+### `FEATURES_GUIDE.md` (NEW)
 - Comprehensive user guide
 - Feature descriptions
 - Usage instructions

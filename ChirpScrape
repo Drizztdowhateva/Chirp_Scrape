@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Runtime launcher for ChirpScrape.
+
+Runs the application in GUI mode by default with no switches.
+"""
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+BOOTSTRAP = os.path.join(HERE, 'bootstrap.py')
+
+# Always launch via bootstrap run path. GUI is the default behavior there.
+os.execv(sys.executable, [sys.executable, BOOTSTRAP, 'run'])

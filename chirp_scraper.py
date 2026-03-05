@@ -77,6 +77,30 @@ try:
 except Exception:
     _TK_AVAILABLE = False
 
+
+def gui_session_available():
+    """Return True when tkinter is importable.
+
+    We intentionally avoid strict env-var checks because desktop terminals can
+    vary across X11/Wayland/Mir/WSL integrations. Actual GUI availability is
+    determined by attempting to create windows and catching runtime errors.
+    """
+    return _TK_AVAILABLE
+
+DEFAULT_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36'
+}
+HTTP_SESSION = requests.Session()
+HTTP_SESSION.headers.update(DEFAULT_HEADERS)
+
+
+def http_get(url, timeout=15, headers=None, **kwargs):
+    """Shared HTTP GET helper using one session for connection reuse."""
+    req_headers = DEFAULT_HEADERS if headers is None else headers
+    resp = HTTP_SESSION.get(url, headers=req_headers, timeout=timeout, **kwargs)
+    resp.raise_for_status()
+    return resp
+
 # Try to load an encrypted RadioReference API key (optional)
 RR_API_KEY = None
 try:
@@ -430,9 +454,7 @@ def valid_freq(f):
 
 def scrape_rr(url):
     """Fetch `url` and return parsed frequency rows via parse_rr_html."""
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"}
-    resp = requests.get(url, headers=headers, timeout=15)
-    resp.raise_for_status()
+    resp = http_get(url, timeout=15)
     return parse_rr_html(resp.text)
 
 
@@ -530,8 +552,8 @@ def fetch_freqs_for_page(url):
                     pass
             # fallback to header-based HTML fetch
             headers = {'X-API-Key': RR_API_KEY}
-            resp = requests.get(url, headers=headers, timeout=15)
-            if resp.status_code == 200 and 'rrdbTable' in resp.text:
+            resp = http_get(url, headers=headers, timeout=15)
+            if 'rrdbTable' in resp.text:
                 return parse_rr_html(resp.text)
     except Exception:
         pass
@@ -542,7 +564,7 @@ def get_pages_from_user():
     """Get a dict of {label: url} from the user.
 
     Supports:
-    - GUI prompt (Tk) when available and DISPLAY set
+    - GUI prompt (Tk) when a desktop session is available
     - Terminal prompt fallback
 
     Input may be comma/space separated tokens. Tokens that look like URLs
@@ -555,8 +577,7 @@ def get_pages_from_user():
     )
 
     input_str = None
-    # On Windows, DISPLAY is not used; allow Tk when available on Windows
-    if _TK_AVAILABLE and (os.name == 'nt' or os.environ.get("DISPLAY")):
+    if gui_session_available():
         try:
             root = tk.Tk()
             # set a friendly title instead of the default 'Tk'
@@ -621,9 +642,8 @@ def get_location_from_url(url):
     Looks for a top-level H2 (e.g., 'Cook County, Illinois') or the <title> tag
     or breadcrumb items.
     """
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"}
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = http_get(url, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
         h2 = soup.select_one('h2')
         if h2 and h2.text.strip():
@@ -647,10 +667,9 @@ def get_county_from_zip(zip_code):
 
     Returns (label, url) or (None, zip_page_url) on fallback.
     """
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"}
     zip_url = f"https://www.radioreference.com/db/browse/zip/{zip_code}/ham"
     try:
-        r = requests.get(zip_url, headers=headers, timeout=10)
+        r = http_get(zip_url, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
         # look for a link to /db/browse/ctid/\d+
         a = soup.find('a', href=re.compile(r'/db/browse/ctid/\d+'))
@@ -666,7 +685,7 @@ def get_county_from_zip(zip_code):
 
     # fallback: try to resolve county via zippopotam.us -> reverse geocode -> search RR
     try:
-        place = requests.get(f'http://api.zippopotam.us/us/{zip_code}', timeout=8).json()
+        place = http_get(f'http://api.zippopotam.us/us/{zip_code}', timeout=8).json()
         places = place.get('places', [])
         if places:
             lat = places[0].get('latitude')
@@ -674,13 +693,21 @@ def get_county_from_zip(zip_code):
             state = places[0].get('state') or place.get('state')
             # reverse geocode with Nominatim to get county
             if lat and lon:
-                nom = requests.get(f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}', headers={'User-Agent':'chirp-scraper'}, timeout=8).json()
+                nom = http_get(
+                    f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
+                    headers={'User-Agent': 'chirp-scraper'},
+                    timeout=8,
+                ).json()
                 addr = nom.get('address', {})
                 county = addr.get('county')
                 state_name = addr.get('state') or state
                 if county and state_name:
                     # search RadioReference for county page
-                    rr_search = requests.get('https://www.radioreference.com/search/', params={'q': f"{county} {state_name}"}, headers=headers, timeout=10)
+                    rr_search = http_get(
+                        'https://www.radioreference.com/search/',
+                        params={'q': f"{county} {state_name}"},
+                        timeout=10,
+                    )
                     ssoup = BeautifulSoup(rr_search.text, 'html.parser')
                     a = ssoup.find('a', href=re.compile(r'/db/browse/ctid/\d+'))
                     if a and a.get('href'):
@@ -702,14 +729,16 @@ def map_zips_to_counties(zips):
     Returns dict {label: url}.
     """
     pages = {}
+    seen_urls = set()
     for z in zips:
         lbl, url = get_county_from_zip(z)
         if lbl is None:
             # use zip page as fallback label
             lbl = f'ZIP {z}'
-        # dedupe by URL
-        if url not in pages.values():
+        # dedupe by URL with O(1) lookups
+        if url not in seen_urls:
             pages[lbl] = url
+            seen_urls.add(url)
     return pages
 
 
@@ -937,11 +966,11 @@ def launch_gui_and_run(default_pages, output_path):
                 writer = _csv.DictWriter(wf, fieldnames=fieldnames)
                 writer.writeheader()
                 i = 0
-                for idx, row in outdf.iterrows():
-                    i += 1
-                    rec = {'Location': idx}
-                    for c in outdf.columns:
-                        rec[c] = row.get(c, '')
+                out_cols = list(outdf.columns)
+                for i, row_tup in enumerate(outdf.itertuples(index=True, name=None), start=1):
+                    rec = {'Location': row_tup[0]}
+                    for c, v in zip(out_cols, row_tup[1:]):
+                        rec[c] = v
                     writer.writerow(rec)
                     progress_bar['value'] = i
                     update_progress(f'Writing {i}/{total} rows...')
@@ -1366,6 +1395,15 @@ def launch_gui_and_run(default_pages, output_path):
     def open_chirp_getting_started():
         webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/GettingStarted')
 
+    def open_chirp_wiki():
+        webbrowser.open('https://chirp.danplanet.com/projects/chirp/wiki/Home')
+
+    def open_chirp_contributors():
+        webbrowser.open('https://github.com/kk7ds/chirp/graphs/contributors')
+
+    def open_joe_ungor_github():
+        webbrowser.open('https://github.com/search?q=Joe+Ungor+CHIRP&type=users')
+
     chirpmenu.add_command(label='CHIRP Website (Dan Smith KK7DS)', command=open_chirp_site)
     chirpmenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS / Jim Unroe KC9HI)', command=open_chirp_project_github)
     chirpmenu.add_separator()
@@ -1373,6 +1411,22 @@ def launch_gui_and_run(default_pages, output_path):
     chirpmenu.add_command(label='CHIRP Daily Builds', command=open_chirp_daily_builds)
     chirpmenu.add_command(label='CHIRP Getting Started Guide', command=open_chirp_getting_started)
     helpmenu.add_cascade(label='CHIRP', menu=chirpmenu)
+
+    # Refrences submenu (intentional spelling per menu request)
+    refrencesmenu = tk.Menu(helpmenu, tearoff=0)
+    refrencesmenu.add_command(label='John Miklor CHIRP Guide (WA9QJV)', command=open_miklor_chirp_guide)
+    refrencesmenu.add_command(label='Joe Ungor GitHub (Search)', command=open_joe_ungor_github)
+    refrencesmenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS / Jim Unroe KC9HI)', command=open_chirp_project_github)
+    refrencesmenu.add_command(label='CHIRP Contributors on GitHub', command=open_chirp_contributors)
+    refrencesmenu.add_separator()
+    refrencesmenu.add_command(label='John Miklor YouTube Channel (WA9QJV)', command=open_miklor_youtube)
+    refrencesmenu.add_command(label='John Miklor CHIRP Videos', command=open_miklor_chirp_videos)
+    refrencesmenu.add_command(label='John Miklor Baofeng Videos', command=open_miklor_baofeng_videos)
+    refrencesmenu.add_separator()
+    refrencesmenu.add_command(label='CHIRP Wiki / Documentation', command=open_chirp_wiki)
+    refrencesmenu.add_command(label='CHIRP Downloads', command=open_chirp_downloads)
+    refrencesmenu.add_command(label='CHIRP Program Website', command=open_chirp_site)
+    helpmenu.add_cascade(label='Refrences', menu=refrencesmenu)
     
     # SOAP Debug submenu
     def open_soap_debug():
@@ -1983,26 +2037,29 @@ def launch_gui_and_run(default_pages, output_path):
         if re.match(r'^\d{5}$', v):
             # geocode via zippopotam.us -> then reverse geocode for county
             try:
-                pr = requests.get(f'http://api.zippopotam.us/us/{v}', timeout=6)
-                if pr.status_code == 200:
-                    pj = pr.json()
-                    places = pj.get('places', [])
-                    if places:
-                        lat = places[0].get('latitude')
-                        lon = places[0].get('longitude')
-                        if lat and lon:
-                            nom = requests.get(f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}', headers={'User-Agent':'chirp-scraper'}, timeout=8).json()
-                            addr = nom.get('address', {})
-                            county = addr.get('county')
-                            state = addr.get('state')
-                            if county and state:
-                                key = f"{county}, {state}".lower()
-                                ctid = rr_index.get(key)
-                                if ctid:
-                                    resolved_labels[idx].set(f"{county}, {state}  (ctid {ctid})")
-                                else:
-                                    resolved_labels[idx].set(f"{county}, {state}  (no ctid)")
-                                return
+                pr = http_get(f'http://api.zippopotam.us/us/{v}', timeout=6)
+                pj = pr.json()
+                places = pj.get('places', [])
+                if places:
+                    lat = places[0].get('latitude')
+                    lon = places[0].get('longitude')
+                    if lat and lon:
+                        nom = http_get(
+                            f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
+                            headers={'User-Agent': 'chirp-scraper'},
+                            timeout=8,
+                        ).json()
+                        addr = nom.get('address', {})
+                        county = addr.get('county')
+                        state = addr.get('state')
+                        if county and state:
+                            key = f"{county}, {state}".lower()
+                            ctid = rr_index.get(key)
+                            if ctid:
+                                resolved_labels[idx].set(f"{county}, {state}  (ctid {ctid})")
+                            else:
+                                resolved_labels[idx].set(f"{county}, {state}  (no ctid)")
+                            return
             except Exception:
                 pass
         # otherwise, show raw value
@@ -2137,7 +2194,7 @@ def launch_gui_and_run(default_pages, output_path):
             # if ZIP, try to map to ctid via rr_index
             if re.match(r'^\d{5}$', u):
                 try:
-                    pr = requests.get(f'http://api.zippopotam.us/us/{u}', timeout=6)
+                    pr = http_get(f'http://api.zippopotam.us/us/{u}', timeout=6)
                     if pr.status_code == 200:
                         pj = pr.json()
                         places = pj.get('places', [])
@@ -2145,7 +2202,11 @@ def launch_gui_and_run(default_pages, output_path):
                             lat = places[0].get('latitude')
                             lon = places[0].get('longitude')
                             if lat and lon:
-                                nom = requests.get(f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}', headers={'User-Agent':'chirp-scraper'}, timeout=8).json()
+                                nom = http_get(
+                                    f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
+                                    headers={'User-Agent': 'chirp-scraper'},
+                                    timeout=8,
+                                ).json()
                                 addr = nom.get('address', {})
                                 county = addr.get('county')
                                 state = addr.get('state')
@@ -2485,11 +2546,11 @@ def launch_gui_and_run(default_pages, output_path):
                     writer = _csv.DictWriter(wf, fieldnames=fieldnames)
                     writer.writeheader()
                     i = 0
-                    for idx, row in outdf.iterrows():
-                        i += 1
-                        rec = {'Location': idx}
-                        for c in outdf.columns:
-                            rec[c] = row.get(c, '')
+                    out_cols = list(outdf.columns)
+                    for i, row_tup in enumerate(outdf.itertuples(index=True, name=None), start=1):
+                        rec = {'Location': row_tup[0]}
+                        for c, v in zip(out_cols, row_tup[1:]):
+                            rec[c] = v
                         writer.writerow(rec)
                         progress_bar['value'] = i
                         update_progress(f'Writing {i}/{total} rows...')
@@ -2688,13 +2749,15 @@ def main():
         else:
             pages = DEFAULT_PAGES
 
-    # GUI is default when available (Tkinter + DISPLAY). Otherwise run CLI.
-    # Allow GUI on Windows without DISPLAY
-    if _TK_AVAILABLE and (os.name == 'nt' or os.environ.get('DISPLAY')):
-        launch_gui_and_run(DEFAULT_PAGES, args.output)
-        return
-    if not _TK_AVAILABLE or not os.environ.get('DISPLAY'):
-        print('GUI not available; running in CLI mode')
+    # GUI is default whenever a desktop session is available; otherwise run CLI.
+    if gui_session_available():
+        try:
+            launch_gui_and_run(DEFAULT_PAGES, args.output)
+            return
+        except Exception as e:
+            print(f'GUI startup failed ({e}); running in CLI mode')
+    else:
+        print('GUI not available: tkinter is not installed in this Python environment; running in CLI mode')
     for c,u in pages.items():
         for tup in scrape_rr(u):
             if len(tup) >= 5:
@@ -2734,7 +2797,7 @@ def main():
                 "Power":"High",
                 "Comment":c
             })
-    for n,f in NOAA_FREQS:
+    for n, f, *_ in NOAA_FREQS:
         rows.append({"Name":n,"Frequency":f,
                      "Duplex":"","Offset":"","Tone":"","rToneFreq":"","cToneFreq":"","DtcsCode":"","DtcsPolarity":"","Mode":"FM","TStep":5,"Skip":"","Comment":"Weather"})
 
@@ -2779,7 +2842,7 @@ def main():
         return (t, '', '')
 
     processed = []
-    for _, r in df.iterrows():
+    for r in df.to_dict(orient='records'):
         name = r['Name']
         freq = r['Frequency']
         duplex = r['Duplex'] if r['Duplex'] is not None else ("-" if (isinstance(freq, (int,float)) and freq<147) else "+")

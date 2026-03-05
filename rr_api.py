@@ -30,17 +30,6 @@ try:
     _HAS_CRYPTO = True
 except Exception:
     _HAS_CRYPTO = False
-    # Try to install cryptography automatically and re-import
-    try:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'cryptography'])
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.backends import default_backend
-        from cryptography.fernet import Fernet
-        _HAS_CRYPTO = True
-    except Exception:
-        _HAS_CRYPTO = False
 
 
 def _derive_key(password: bytes, salt: bytes, iterations: int = 390000) -> bytes:
@@ -217,29 +206,26 @@ def login_and_save_api_key(username: str | None = None, password: str | None = N
 
 
 def _ensure_zeep():
-    """Ensure the `zeep` SOAP client library is available, try to install if missing."""
+    """Return the `zeep` module if available, otherwise None.
+
+    Runtime auto-install is intentionally disabled for security and predictable
+    deployments. Install optional dependencies via requirements management.
+    """
     try:
         import zeep  # type: ignore
         return zeep
     except Exception:
-        try:
-            import subprocess, sys
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'zeep'])
-            import zeep  # type: ignore
-            return zeep
-        except Exception:
-            return None
+        return None
 
 
 def call_soap_method(api_key: str, method_name: str, wsdl: str = 'http://api.radioreference.com/soap2/?wsdl&v=latest', **params):
     """Call a SOAP method using zeep. Returns the raw response object.
 
-    This will try to install `zeep` if it's not present. Pass `api_key` and
-    method-specific params as kwargs.
+    Pass `api_key` and method-specific params as kwargs.
     """
     zeep = _ensure_zeep()
     if zeep is None:
-        raise RuntimeError('zeep SOAP client not available and could not be installed')
+        raise RuntimeError('zeep SOAP client not available. Install zeep in your environment.')
     from zeep import Client
     client = Client(wsdl)
     service = client.service

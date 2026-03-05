@@ -11,29 +11,28 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 ## Quick Start ✅
 
-1. **One-step bootstrap (recommended)**
+1. **One-step runtime (recommended)**
 
-   Run the provided `bootstrap.py` to create a virtual environment, install dependencies, and launch the app. This is the easiest cross-platform method:
+   Run the `ChirpScrape` launcher to create/repair the virtual environment, install dependencies, and launch the app in GUI mode by default (no switches):
 
    Linux / macOS:
 
    ```bash
-   python3 bootstrap.py --gui
+   ./ChirpScrape
+   # or: python3 ChirpScrape
    ```
 
    Windows (PowerShell):
 
    ```powershell
-   python bootstrap.py --gui
+   python ChirpScrape
    ```
 
    Windows (cmd.exe):
 
    ```cmd
-   python bootstrap.py --gui
+   python ChirpScrape
    ```
-
-   If you only want to install dependencies without launching the GUI, pass `--install-only`.
 
 2. **Manual setup (alternative)**
 
@@ -68,6 +67,70 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 3. **Check output:**
    - Output files will be generated in the project directory (e.g., `chirp_output.csv`).
+
+## One Runtime File
+
+Primary runtime command (GUI default, no switches):
+
+```bash
+./ChirpScrape
+```
+
+Runtime launchers are kept in the main project directory for easy discovery:
+- `ChirpScrape`
+- `bootstrap.py`
+
+Use `bootstrap.py` as the single runtime entrypoint for install/run/test/security:
+
+```bash
+python3 bootstrap.py run        # install deps, then run app
+python3 bootstrap.py install    # install deps only
+python3 bootstrap.py test       # syntax + unittest smoke tests
+python3 bootstrap.py security   # lightweight static security scan
+python3 bootstrap.py package    # build one-time distributable for this OS
+python3 bootstrap.py all        # install + security + test + run
+```
+
+Legacy flags still work (`--install-only`, `--test`, `--security-check`, `--gui`).
+
+## Build App, DMG, EXE (One-Time Packaging)
+
+Packaging is platform-native. Build on the target OS:
+
+### Linux Onefile Binary
+
+```bash
+./scripts/build_linux_onefile.sh
+```
+
+Output:
+- `dist/ChirpScrape`
+
+### macOS App + DMG
+
+```bash
+./scripts/build_macos_app_dmg.sh
+```
+
+Outputs:
+- `dist/ChirpScrape.app`
+- `dist/ChirpScrape.dmg`
+
+### Windows EXE
+
+Run in PowerShell:
+
+```powershell
+./scripts/build_windows_exe.ps1
+```
+
+Output:
+- `dist/ChirpScrape.exe`
+
+Notes:
+- `.app`/`.dmg` must be built on macOS.
+- `.exe` must be built on Windows.
+- A Linux build was generated in this workspace and verified with `--help` at `dist/ChirpScrape`.
 
 ## Donations 🙏
 
