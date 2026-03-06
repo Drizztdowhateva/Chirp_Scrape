@@ -18,6 +18,10 @@ outputs/chirp_output_*.csv
 # Local backups
 .backup/
 
+# PowerShell installer artifacts (download on demand; do not commit binaries)
+scripts/powershell/*.deb
+packages-microsoft-prod.deb
+
 # Sensitive credential files – never commit these
 .rr_api_pass
 rr_api.enc

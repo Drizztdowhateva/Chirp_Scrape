@@ -2,6 +2,9 @@
 ###################################
 # Prerequisites
 
+# Optional: download standalone PowerShell .deb on demand (instead of storing it in git)
+#   ./scripts/powershell/download_powershell_deb.sh 7.5.4
+
 # Update the list of packages
 sudo apt-get update
 
