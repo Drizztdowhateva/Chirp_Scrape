@@ -5,9 +5,15 @@
 __pycache__/
 *.pyc
 
+# Build artifacts
+build/
+dist/
+
 # Local output files
 chirp_output.csv
 chirp_output_*.csv
+outputs/chirp_output.csv
+outputs/chirp_output_*.csv
 
 # Local backups
 .backup/

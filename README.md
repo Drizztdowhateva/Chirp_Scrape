@@ -7,7 +7,16 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 **If `radioref.csv` is missing or outdated, please see the [Troubleshooting](#troubleshooting) section below.**
 
-**📚 Documentation**: See [README_ENHANCEMENTS.md](README_ENHANCEMENTS.md) for complete feature documentation, and [CHANGELOG.md](CHANGELOG.md) for version history and updates.
+**📚 Documentation**: See [docs/README_ENHANCEMENTS.md](docs/README_ENHANCEMENTS.md) for complete feature documentation, and [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and updates.
+
+## Technical Business Profile 🏢
+
+ChirpScrape is a technical-business utility for radio data operations with a local-first workflow, packaging support, and practical automation for field and office teams.
+
+- 🔐 Reliability-focused data collection and export workflows
+- ⚙️ Automation-friendly CLI and GUI runtime
+- 🖥️ Cross-platform packaging support for deployment
+- 📊 CSV-first outputs for downstream operational pipelines
 
 ## Quick Start ✅
 
@@ -66,7 +75,8 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
    ```
 
 3. **Check output:**
-   - Output files will be generated in the project directory (e.g., `chirp_output.csv`).
+   - Output files are generated in the project directory by default (e.g., `chirp_output.csv`).
+   - Sample output in this repository is stored at `outputs/chirp_output.csv`.
 
 ## One Runtime File
 
