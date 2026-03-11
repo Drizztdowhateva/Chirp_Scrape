@@ -223,3 +223,7 @@ See `README.txt` for additional project notes.
 
 This software is provided as-is. When scraping websites, ensure you follow the target site's terms of service and robots.txt. The author is not responsible for misuse.
 
+
+## Chat
+
+- WhatsApp: https://wa.me/13127235816
