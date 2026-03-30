@@ -13,10 +13,10 @@ fi
   --noconfirm \
   --clean \
   --onefile \
-  --name ChirpScrape \
+  --name FreqFinder \
   --add-data "media:media" \
   --add-data "csv_files:csv_files" \
   --add-data "radioref.csv:." \
   chirp_scraper.py
 
-echo "Built: dist/ChirpScrape"
+echo "Built: dist/FreqFinder"

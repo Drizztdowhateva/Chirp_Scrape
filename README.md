@@ -1,5 +1,5 @@
 
-# Chirp RadioReference Scraper 🚀
+# FreqFinder RadioReference Scraper 🚀
 
 ![ChirpScrape screenshot](https://raw.githubusercontent.com/Drizztdowhateva/Chirp_Scrape/main/media/26Feb_16_ChirpScrape.png)
 
@@ -11,7 +11,7 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 ## Technical Business Profile 🏢
 
-ChirpScrape is a technical-business utility for radio data operations with a local-first workflow, packaging support, and practical automation for field and office teams.
+FreqFinder is a technical-business utility for radio data operations with a local-first workflow, packaging support, and practical automation for field and office teams.
 
 - 🔐 Reliability-focused data collection and export workflows
 - ⚙️ Automation-friendly CLI and GUI runtime
@@ -20,14 +20,33 @@ ChirpScrape is a technical-business utility for radio data operations with a loc
 
 ## Quick Start ✅
 
+### Gradle (Java) local init
+
+This repository supports both Python packaging and Gradle Java tooling. If you see "Gradle init" issues, use the bundled wrapper:
+
+```bash
+./gradlew --no-daemon --stacktrace --info clean build
+./gradlew test
+./gradlew run
+```
+
+If this repository is checked out without wrapper and you must regenerate:
+
+```bash
+gradle wrapper
+./gradlew --no-daemon --stacktrace --info clean build
+```
+
+---
+
 1. **One-step runtime (recommended)**
 
-   Run the `ChirpScrape` launcher to create/repair the virtual environment, install dependencies, and launch the app in GUI mode by default (no switches):
+   Run the `FreqFinder` launcher to create/repair the virtual environment, install dependencies, and launch the app in GUI mode by default (no switches):
 
    Linux / macOS:
 
    ```bash
-   ./ChirpScrape
+   ./FreqFinder
    # or: python3 ChirpScrape
    ```
 
@@ -83,11 +102,11 @@ ChirpScrape is a technical-business utility for radio data operations with a loc
 Primary runtime command (GUI default, no switches):
 
 ```bash
-./ChirpScrape
+./FreqFinder
 ```
 
 Runtime launchers are kept in the main project directory for easy discovery:
-- `ChirpScrape`
+- `FreqFinder`
 - `bootstrap.py`
 
 Use `bootstrap.py` as the single runtime entrypoint for install/run/test/security:
@@ -114,7 +133,7 @@ Packaging is platform-native. Build on the target OS:
 ```
 
 Output:
-- `dist/ChirpScrape`
+- `dist/FreqFinder`
 
 ### macOS App + DMG
 
@@ -123,8 +142,8 @@ Output:
 ```
 
 Outputs:
-- `dist/ChirpScrape.app`
-- `dist/ChirpScrape.dmg`
+- `dist/FreqFinder.app`
+- `dist/FreqFinder.dmg`
 
 ### Windows EXE
 
@@ -135,7 +154,7 @@ Run in PowerShell:
 ```
 
 Output:
-- `dist/ChirpScrape.exe`
+- `dist/FreqFinder.exe`
 
 Notes:
 - `.app`/`.dmg` must be built on macOS.
@@ -178,7 +197,7 @@ Developing and maintaining open source software takes significant time and resou
 
 **If you encounter numpy/pandas import errors:**
 
-ChirpScrape now supports Python 3.13 with properly compatible dependencies:
+FreqFinder now supports Python 3.13 with properly compatible dependencies:
 - **numpy 2.4.2+** - Required for Python 3.13 compatibility
 - **pandas 3.0.0+** - Updated for latest numpy and Python versions
 

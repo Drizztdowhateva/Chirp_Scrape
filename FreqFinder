@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runtime launcher for ChirpScrape.
+"""Runtime launcher for FreqFinder.
 
 Runs the application in GUI mode by default with no switches.
 """

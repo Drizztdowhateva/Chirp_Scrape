@@ -1,6 +1,26 @@
 plugins {
-    id 'base'
+    id 'java'
+    id 'application'
 }
 
-// Minimal Gradle project for wrapper initialization.
+group = 'com.chirp'
+version = '0.1.0'
+
+application {
+    mainClass = 'com.chirp.Main'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// Minimal Gradle Java project for local CI/remote SSH testing.
 

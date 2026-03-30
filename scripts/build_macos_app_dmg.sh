@@ -18,20 +18,20 @@ fi
   --noconfirm \
   --clean \
   --windowed \
-  --name ChirpScrape \
+  --name FreqFinder \
   --add-data "media:media" \
   --add-data "csv_files:csv_files" \
   --add-data "radioref.csv:." \
   chirp_scraper.py
 
-APP_PATH="dist/ChirpScrape.app"
-DMG_PATH="dist/ChirpScrape.dmg"
+APP_PATH="dist/FreqFinder.app"
+DMG_PATH="dist/FreqFinder.dmg"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Expected app not found at $APP_PATH"
   exit 1
 fi
 
-hdiutil create -volname "ChirpScrape" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
+hdiutil create -volname "FreqFinder" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
 echo "Built: $APP_PATH"
 echo "Built: $DMG_PATH"

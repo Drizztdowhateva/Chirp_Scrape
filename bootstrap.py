@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified runtime helper: install, run, test, and security-check Chirp_Scrape.
+"""Unified runtime helper: install, run, test, and security-check FreqFinder.
 
 Usage:
     python3 bootstrap.py [command] [--gui|--cli]
@@ -205,7 +205,7 @@ def package_current_platform():
 def main():
     import argparse
     p = argparse.ArgumentParser(
-        description='Unified ChirpScrape runtime/packaging helper',
+        description='Unified FreqFinder runtime/packaging helper',
         epilog=(
             'Examples:\n'
             '  python3 bootstrap.py run\n'

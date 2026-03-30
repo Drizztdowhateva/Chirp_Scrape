@@ -15,10 +15,10 @@ if (-not (Test-Path $PythonExe)) {
     --clean `
     --onefile `
     --windowed `
-    --name ChirpScrape `
+    --name FreqFinder `
     --add-data "media;media" `
     --add-data "csv_files;csv_files" `
     --add-data "radioref.csv;." `
     chirp_scraper.py
 
-Write-Host "Built: dist/ChirpScrape.exe"
+Write-Host "Built: dist/FreqFinder.exe"

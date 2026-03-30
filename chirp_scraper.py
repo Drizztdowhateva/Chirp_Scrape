@@ -582,7 +582,7 @@ def get_pages_from_user():
             root = tk.Tk()
             # set a friendly title instead of the default 'Tk'
             try:
-                root.title('ChirpScrape')
+                root.title('FreqFinder')
             except Exception:
                 pass
             # try to set window icon from bundled media image (graceful fallback)
@@ -751,7 +751,7 @@ def launch_gui_and_run(default_pages, output_path):
     root = tk.Tk()
     # set main window title
     try:
-        root.title('ChirpScrape')
+        root.title('FreqFinder')
     except Exception:
         root.title('CHIRP RR Scraper')
 
@@ -907,7 +907,7 @@ def launch_gui_and_run(default_pages, output_path):
             progress_window.update()
 
         try:
-            # build default filename similar to export: Chirp_$Model_Zipcode[#]_$Month
+            # build default filename similar to export: FreqFinder_$Model_Zipcode[#]_$Month
             try:
                 from datetime import datetime
                 model_raw = None
@@ -942,7 +942,7 @@ def launch_gui_and_run(default_pages, output_path):
                     zip_part = re.sub(r'[^A-Za-z0-9]+', '_', first_label).strip('_')
 
                 month_part = datetime.now().strftime('%b%Y')
-                default_name = f"Chirp_{model_s}_{zip_part}_{month_part}.csv"
+                default_name = f"FreqFinder_{model_s}_{zip_part}_{month_part}.csv"
             except Exception:
                 default_name = 'chirp_output.csv'
 
@@ -1166,7 +1166,7 @@ def launch_gui_and_run(default_pages, output_path):
             webbrowser.open(Path(readme).as_uri())
         except Exception:
             try:
-                webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')
+                # webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
             except Exception:
                 pass
     helpmenu.add_command(label='How-To', command=open_readme)
@@ -1183,7 +1183,7 @@ def launch_gui_and_run(default_pages, output_path):
             webbrowser.open(f'file://{html_path}')
 
     def open_github():
-        webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')
+        # webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
 
     contactmenu.add_command(label='Donations', command=open_donations)
     contactmenu.add_command(label='GitHub Project', command=open_github)
@@ -2525,7 +2525,7 @@ def launch_gui_and_run(default_pages, output_path):
                     zip_part = re.sub(r'[^A-Za-z0-9]+', '_', first_label).strip('_')
 
                 month_part = datetime.now().strftime('%b%Y')
-                default_name = f"Chirp_{model_s}_{zip_part}_{month_part}.csv"
+                default_name = f"FreqFinder_{model_s}_{zip_part}_{month_part}.csv"
             except Exception:
                 default_name = output_path or 'chirp_output.csv'
 

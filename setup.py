@@ -8,9 +8,9 @@ if reqs.exists():
     install_requires = [r.strip() for r in reqs.read_text().splitlines() if r.strip() and not r.strip().startswith('#')]
 
 setup(
-    name='Chirp_Scrape',
+    name='FreqFinder',
     version='0.1.0',
-    description='RadioReference CHIRP scraper',
+    description='RadioReference FreqFinder scraper',
     author='Tim Rohe',
     py_modules=['chirp_scraper', 'make_radioref_list'],
     include_package_data=True,
@@ -18,7 +18,7 @@ setup(
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
-            'chirp-scraper=chirp_scraper:main',
+            'freqfinder=chirp_scraper:main',
         ],
     },
 )
