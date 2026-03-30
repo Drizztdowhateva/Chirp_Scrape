@@ -227,3 +227,21 @@ This software is provided as-is. When scraping websites, ensure you follow the t
 ## Chat
 
 - WhatsApp: https://wa.me/13127235816
+
+## Remote SSH run (CHIRP_Script local Linux)
+
+Use this script when connecting to a remote host via SSH to run the local project path.
+
+```bash
+./scripts/rssh-run.sh user@remotehost /home/user/code/Chirp_Scrape
+```
+
+This will:
+- enter the remote project directory
+- ensure `gradlew` is executable
+- run `./gradlew --no-daemon --stacktrace --info clean build`
+
+`neofetch` is optional (Linux convenience):
+```bash
+ssh user@remotehost 'neofetch --ascii_distro Ubuntu'
+```
