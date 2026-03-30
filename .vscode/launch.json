@@ -25,6 +25,27 @@
             "request": "attach"
         },
         {
+            "name": "Bash: Run script (bashdb)",
+            "type": "bashdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/example.sh",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "terminalKind": "integrated"
+        },
+        {
+            "name": "Bash: Run remote SSH script",
+            "type": "bashdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/remote.sh",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "terminalKind": "integrated",
+            "env": {
+                "SSH_AUTH_SOCK": "${env:SSH_AUTH_SOCK}"
+            }
+        },
+        {
             "name": "Launch WebExtension",
             "type": "firefox",
             "request": "launch",
