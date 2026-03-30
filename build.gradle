@@ -1,0 +1,6 @@
+plugins {
+    id 'base'
+}
+
+// Minimal Gradle project for wrapper initialization.
+
