@@ -2819,7 +2819,9 @@ def launch_gui_and_run(default_pages, output_path):
                             continue
             skip_value = ''
             if scanner_mode_enabled and band == 'NOAA':
-                skip_value = 'Yes'
+                # CHIRP generic CSV accepts '', 'S', or 'P' for the Skip field.
+                # Use 'S' to mark scanner-mode NOAA/WX channels as skipped.
+                skip_value = 'S'
             df_rows.append({
                 'Name': name,
                 'Frequency': freq,
