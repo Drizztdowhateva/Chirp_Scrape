@@ -1,7 +1,7 @@
 
 # FreqFinder RadioReference Scraper 🚀
 
-![ChirpScrape screenshot](https://raw.githubusercontent.com/Drizztdowhateva/Chirp_Scrape/main/media/26Feb_16_ChirpScrape.png)
+![FreqFinder screenshot](https://raw.githubusercontent.com/Drizztdowhateva/FreqFinder/main/media/26Feb_16_FreqFinder.png)
 
 This project uses a small index file, `radioref.csv`, to map RadioReference CTID pages (county/city titles) to their numeric CTID IDs. This file is required for ZIP-to-CTID mapping in the GUI and for accurate RadioReference lookups.
 
@@ -41,25 +41,24 @@ gradle wrapper
 
 1. **One-step runtime (recommended)**
 
-   Run the `FreqFinder` launcher to create/repair the virtual environment, install dependencies, and launch the app in GUI mode by default (no switches):
+   Run the `run_freqfinder.sh` launcher to create/repair the virtual environment, install dependencies, and launch the app in GUI mode by default (no switches):
 
    Linux / macOS:
 
    ```bash
-   ./FreqFinder
-   # or: python3 ChirpScrape
+   ./run_freqfinder.sh
    ```
 
    Windows (PowerShell):
 
    ```powershell
-   python ChirpScrape
+   python FreqFinder
    ```
 
    Windows (cmd.exe):
 
    ```cmd
-   python ChirpScrape
+   python FreqFinder
    ```
 
 2. **Manual setup (alternative)**
@@ -72,7 +71,7 @@ gradle wrapper
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
-   python3 chirp_scraper.py --gui
+   python3 freqfinder.py --gui
    ```
 
    Windows (PowerShell):
@@ -81,7 +80,7 @@ gradle wrapper
    python -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
-   python chirp_scraper.py --gui
+   python freqfinder.py --gui
    ```
 
    Windows (cmd.exe):
@@ -90,7 +89,7 @@ gradle wrapper
    python -m venv .venv
    .\.venv\Scripts\activate.bat
    pip install -r requirements.txt
-   python chirp_scraper.py --gui
+   python freqfinder.py --gui
    ```
 
 3. **Check output:**
@@ -108,6 +107,24 @@ Primary runtime command (GUI default, no switches):
 Runtime launchers are kept in the main project directory for easy discovery:
 - `FreqFinder`
 - `bootstrap.py`
+
+## Data Source Options
+
+FreqFinder supports both:
+- `RadioReference` as the primary repeater frequency source
+- `Radio Browser` as a public, API-key-free broadcast station metadata source
+
+For example, to fetch Radio Browser station metadata for ZIP codes without login:
+
+```bash
+python freqfinder.py --source radio_browser --pages 60626 94107 --output radio_browser_stations.csv
+```
+
+To show the QRZ helper stub and verify the integration point:
+
+```bash
+python freqfinder.py --qrz-stub
+```
 
 Use `bootstrap.py` as the single runtime entrypoint for install/run/test/security:
 
@@ -159,7 +176,7 @@ Output:
 Notes:
 - `.app`/`.dmg` must be built on macOS.
 - `.exe` must be built on Windows.
-- A Linux build was generated in this workspace and verified with `--help` at `dist/ChirpScrape`.
+- A Linux build was generated in this workspace and verified with `--help` at `dist/FreqFinder`.
 
 ## Donations 🙏
 
@@ -252,7 +269,7 @@ This software is provided as-is. When scraping websites, ensure you follow the t
 Use this script when connecting to a remote host via SSH to run the local project path.
 
 ```bash
-./scripts/rssh-run.sh user@remotehost /home/user/code/Chirp_Scrape
+./scripts/rssh-run.sh user@remotehost /home/user/code/FreqFinder
 ```
 
 This will:

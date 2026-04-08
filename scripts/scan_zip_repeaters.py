@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 # ensure project root on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from chirp_scraper import scrape_rr, get_defaults_for_freq
+from freqfinder import scrape_rr, get_defaults_for_freq
 
 RADIOREF_CSV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'radioref.csv')
 

@@ -17,6 +17,6 @@ fi
   --add-data "media:media" \
   --add-data "csv_files:csv_files" \
   --add-data "radioref.csv:." \
-  chirp_scraper.py
+  freqfinder.py
 
 echo "Built: dist/FreqFinder"

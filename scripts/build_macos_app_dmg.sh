@@ -22,7 +22,7 @@ fi
   --add-data "media:media" \
   --add-data "csv_files:csv_files" \
   --add-data "radioref.csv:." \
-  chirp_scraper.py
+  freqfinder.py
 
 APP_PATH="dist/FreqFinder.app"
 DMG_PATH="dist/FreqFinder.dmg"

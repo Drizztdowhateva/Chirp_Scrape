@@ -16,7 +16,7 @@ RADIOREF_CSV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'media', f'test_{args.zip}_repeaters.csv')
 HEAD = ['Location','Name','Frequency','Duplex','Offset','Tone','rToneFreq','cToneFreq','DtcsCode','DtcsPolarity','Mode','TStep','Skip','Comment']
 
-# Resolve ZIP to a RadioReference page using chirp_scraper helper when possible
+# Resolve ZIP to a RadioReference page using FreqFinder helper when possible
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 

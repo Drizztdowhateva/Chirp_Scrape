@@ -1,4 +1,4 @@
-# chirp_scraper.py
+# freqfinder.py
 # TX is ENABLED on repeaters via Duplex +/-
 #
 # Note: This script uses a small local index file `radioref.csv` which maps
@@ -64,6 +64,7 @@ def _ensure_project_venv_and_requirements():
 import re
 import sys
 import os
+import time
 import argparse
 
 # Import dependencies after bootstrapping
@@ -93,13 +94,93 @@ DEFAULT_HEADERS = {
 HTTP_SESSION = requests.Session()
 HTTP_SESSION.headers.update(DEFAULT_HEADERS)
 
+RADIO_BROWSER_API_BASE = 'https://de1.api.radio-browser.info/json'
+DEFAULT_SAVE_DIR = os.path.expanduser('~/Documents')
+DEFAULT_OUTPUT_FILE = os.path.join(DEFAULT_SAVE_DIR, 'freqfinder_output.csv')
+SETTINGS_FILE = os.path.expanduser('~/.freqfinder_settings.json')
 
-def http_get(url, timeout=15, headers=None, **kwargs):
-    """Shared HTTP GET helper using one session for connection reuse."""
+REQUEST_DELAY_SECONDS = float(os.environ.get('FREQFINDER_REQUEST_DELAY', '0') or 0)
+_last_http_get_timestamp = None
+
+DEFAULT_PERSISTENT_SETTINGS = {
+    'selected_model': 'Generic',
+    'selected_source': 'RadioReference',
+    'customization_level': 'Default',
+    'scanner_mode': 0,
+    'frs_gmrs_unlock': 0,
+}
+
+
+def load_persistent_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            import json
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as sf:
+                data = json.load(sf)
+            if isinstance(data, dict):
+                return {**DEFAULT_PERSISTENT_SETTINGS, **data}
+    except Exception:
+        pass
+    return dict(DEFAULT_PERSISTENT_SETTINGS)
+
+
+def save_persistent_settings(data):
+    try:
+        import json
+        safe = {k: data.get(k, DEFAULT_PERSISTENT_SETTINGS.get(k)) for k in DEFAULT_PERSISTENT_SETTINGS}
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as sf:
+            json.dump(safe, sf, indent=2)
+    except Exception:
+        pass
+
+
+def http_get(url, timeout=15, headers=None, delay=None, **kwargs):
+    """Shared HTTP GET helper using one session for connection reuse.
+
+    Supports optional delays between remote requests to avoid rate limiting
+    and reduce anti-scraping detection.
+    """
+    global _last_http_get_timestamp
+    if delay is None:
+        delay = REQUEST_DELAY_SECONDS
+    if delay and _last_http_get_timestamp is not None:
+        elapsed = time.monotonic() - _last_http_get_timestamp
+        if elapsed < delay:
+            time.sleep(delay - elapsed)
+
     req_headers = DEFAULT_HEADERS if headers is None else headers
-    resp = HTTP_SESSION.get(url, headers=req_headers, timeout=timeout, **kwargs)
-    resp.raise_for_status()
-    return resp
+    attempts = 3
+    backoff = 1.0
+    for attempt in range(attempts):
+        try:
+            resp = HTTP_SESSION.get(url, headers=req_headers, timeout=timeout, **kwargs)
+        except requests.RequestException as exc:
+            if attempt + 1 < attempts:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            raise
+
+        _last_http_get_timestamp = time.monotonic()
+        if resp.status_code == 405 and 'Human Verification' in resp.text:
+            raise RuntimeError(
+                'RadioReference blocked access with human verification. '
+                'This means automated scraping is not currently allowed from this environment. '
+                'Use the Radio Browser source in Preferences, or provide a direct API-backed source.'
+            )
+        if resp.status_code in (429, 503):
+            if attempt + 1 < attempts:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+        if resp.status_code == 403 and attempt + 1 < attempts:
+            time.sleep(backoff)
+            backoff *= 2
+            continue
+        resp.raise_for_status()
+        return resp
+
+    raise RuntimeError(f'HTTP GET failed for {url} after {attempts} attempts')
 
 # Try to load an encrypted RadioReference API key (optional)
 RR_API_KEY = None
@@ -723,6 +804,103 @@ def get_county_from_zip(zip_code):
     return (None, zip_url)
 
 
+def get_zip_state(zipcode):
+    """Return the U.S. state name for a ZIP code."""
+    try:
+        r = http_get(f'http://api.zippopotam.us/us/{zipcode}', timeout=8)
+        pj = r.json()
+        places = pj.get('places', [])
+        if not places:
+            return None
+        return places[0].get('state')
+    except Exception:
+        return None
+
+
+def fetch_radio_browser_stations_for_state(state, limit=100):
+    """Fetch internet radio station metadata for a U.S. state via Radio Browser."""
+    if not state:
+        return []
+    params = {'countrycode': 'US', 'state': state, 'limit': str(limit)}
+    try:
+        resp = http_get(f'{RADIO_BROWSER_API_BASE}/stations/search', params=params, timeout=15)
+        data = resp.json()
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
+
+
+def get_radio_browser_broadcast_for_zip(zipcode, limit=100):
+    """Fetch broadcast station metadata for the ZIP code state using Radio Browser."""
+    state = get_zip_state(zipcode)
+    if not state:
+        return []
+    return fetch_radio_browser_stations_for_state(state, limit=limit)
+
+
+class QRZHelper:
+    """QRZ helper stub.
+
+    This class provides the public integration point for QRZ data without
+    embedding or shipping QRZ credentials. A full QRZ XML API implementation
+    should be added separately and kept private, since QRZ requires a login and
+    license agreement.
+    """
+    def __init__(self, username=None, password=None, api_key=None):
+        self.username = username
+        self.password = password
+        self.api_key = api_key
+        self.logged_in = False
+
+    def login(self):
+        """Stub login.
+
+        Returns False because QRZ credentials must be provided and the actual
+        implementation is not included in this repository.
+        """
+        self.logged_in = False
+        return False
+
+    def lookup_callsign(self, callsign):
+        """Return a stub response for a callsign lookup."""
+        return {
+            'status': 'stub',
+            'callsign': callsign,
+            'message': 'QRZ helper stub active; implement QRZ XML API access separately with credentials.',
+        }
+
+    def lookup_zip(self, zipcode):
+        """Return a stub response for a ZIP code lookup."""
+        return {
+            'status': 'stub',
+            'zipcode': zipcode,
+            'message': 'QRZ helper stub active; QRZ does not provide a public ZIP-to-frequency feed without a subscription.',
+        }
+
+
+def get_defaults_for_freq(freq):
+    """Return pre-loaded defaults for common public-frequency bands if available."""
+    try:
+        target = float(freq)
+    except Exception:
+        return {}
+    for source in (FRS_GMRS_FREQS, MURS_FREQS, NOAA_FREQS):
+        for item in source:
+            if len(item) < 2:
+                continue
+            try:
+                source_freq = float(item[1])
+            except Exception:
+                continue
+            if abs(source_freq - target) < 0.001:
+                if len(item) >= 4 and isinstance(item[-1], dict):
+                    return item[-1]
+                return {}
+    return {}
+
+
 def map_zips_to_counties(zips):
     """Map a list of ZIP strings to unique county pages on RadioReference.
 
@@ -753,7 +931,7 @@ def launch_gui_and_run(default_pages, output_path):
     try:
         root.title('FreqFinder')
     except Exception:
-        root.title('CHIRP RR Scraper')
+        root.title('FreqFinder RR Scraper')
 
     # try to set window icon from bundled media image (graceful fallback)
     try:
@@ -950,7 +1128,8 @@ def launch_gui_and_run(default_pages, output_path):
             progress_label.config(text='Choose save location...')
             progress_window.update()
 
-            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialfile=default_name, title='Save CSV as')
+            initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
+            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Save CSV as')
             if not save_path:
                 progress_window.destroy()
                 return
@@ -1092,7 +1271,7 @@ def launch_gui_and_run(default_pages, output_path):
     # Getting Started / Quick Guide
     def show_getting_started():
         guide_window = tk.Toplevel(root)
-        guide_window.title('Getting Started with ChirpScrape')
+        guide_window.title('Getting Started with FreqFinder')
         center_and_clamp(guide_window, 700, 650)
         guide_window.resizable(True, True)
         
@@ -1126,7 +1305,7 @@ def launch_gui_and_run(default_pages, output_path):
             ('🔧 Quality Levels',
              '• Default: Essential features\n• Standard: Extended features + deduplication\n• Advanced: Power user features\n• High Quality: Maximum optimization'),
             ('📱 Radio Models',
-             'ChirpScrape supports:\n• Generic (all CHIRP radios)\n• Baofeng UV-5R/UV-82\n• Motorola (Professional)\n• Kenwood (VHF/UHF)'),
+             'FreqFinder supports:\n• Generic (all CHIRP radios)\n• Baofeng UV-5R/UV-82\n• Motorola (Professional)\n• Kenwood (VHF/UHF)'),
             ('💡 Tips',
              '• Hover over elements for helpful tips\n• RadioReference has the most complete data\n• Check Help > RadioReference for frequency info\n• Contact GitHub for support/issues'),
         ]
@@ -1166,6 +1345,7 @@ def launch_gui_and_run(default_pages, output_path):
             webbrowser.open(Path(readme).as_uri())
         except Exception:
             try:
+                pass
                 # webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
             except Exception:
                 pass
@@ -1183,7 +1363,10 @@ def launch_gui_and_run(default_pages, output_path):
             webbrowser.open(f'file://{html_path}')
 
     def open_github():
-        # webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
+        try:
+            webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
+        except Exception:
+            pass
 
     contactmenu.add_command(label='Donations', command=open_donations)
     contactmenu.add_command(label='GitHub Project', command=open_github)
@@ -1401,12 +1584,50 @@ def launch_gui_and_run(default_pages, output_path):
     def open_chirp_contributors():
         webbrowser.open('https://github.com/kk7ds/chirp/graphs/contributors')
 
+    def open_qrz_diagnostics():
+        dlg = tk.Toplevel(root)
+        dlg.title('QRZ Diagnostics')
+        dlg.resizable(True, True)
+        center_and_clamp(dlg, 600, 360)
+
+        txt = tk.Text(dlg, wrap='word', bg='#f5f5f5')
+        txt.pack(fill='both', expand=True, padx=10, pady=10)
+        txt.insert('end', 'QRZ Diagnostics\n')
+        txt.insert('end', '===================\n')
+        txt.insert('end', 'QRZ helper stub class is available.\n')
+        has_key = bool(os.environ.get('RR_API_KEY') or os.environ.get('RR_API_PASS'))
+        txt.insert('end', f'QRZ credentials environment present: {has_key}\n')
+        txt.insert('end', 'QRZ XML API access is not implemented in this stub.\n')
+        txt.insert('end', 'Use `RR_API_KEY` or `RR_API_PASS` only if you add private QRZ integration separately.\n')
+        txt.config(state='disabled')
+
+    def open_diagnostics():
+        dlg = tk.Toplevel(root)
+        dlg.title('Diagnostics')
+        dlg.resizable(True, True)
+        center_and_clamp(dlg, 600, 380)
+
+        txt = tk.Text(dlg, wrap='word', bg='#f5f5f5')
+        txt.pack(fill='both', expand=True, padx=10, pady=10)
+        source_name = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
+        txt.insert('end', 'Diagnostics\n')
+        txt.insert('end', '===========\n')
+        txt.insert('end', f'Selected source: {source_name}\n')
+        txt.insert('end', f'RadioReference index loaded: {bool(rr_index)} (radioref.csv)\n')
+        txt.insert('end', f'Radio Browser API base: {RADIO_BROWSER_API_BASE}\n')
+        txt.insert('end', f'QRZ helper stub available: yes\n')
+        txt.insert('end', f'QRZ credentials environment present: {bool(os.environ.get("RR_API_KEY") or os.environ.get("RR_API_PASS"))}\n')
+        txt.insert('end', '\nUse the Preferences menu to change the selected source.\n')
+        txt.config(state='disabled')
+
     def open_joe_ungor_github():
         webbrowser.open('https://github.com/search?q=Joe+Ungor+CHIRP&type=users')
 
     chirpmenu.add_command(label='CHIRP Website (Dan Smith KK7DS)', command=open_chirp_site)
     chirpmenu.add_command(label='CHIRP GitHub (Dan Smith KK7DS / Jim Unroe KC9HI)', command=open_chirp_project_github)
     chirpmenu.add_separator()
+    helpmenu.add_command(label='Diagnostics', command=open_diagnostics)
+    helpmenu.add_separator()
     chirpmenu.add_command(label='CHIRP Downloads', command=open_chirp_downloads)
     chirpmenu.add_command(label='CHIRP Daily Builds', command=open_chirp_daily_builds)
     chirpmenu.add_command(label='CHIRP Getting Started Guide', command=open_chirp_getting_started)
@@ -1545,6 +1766,8 @@ def launch_gui_and_run(default_pages, output_path):
                 rr_api.encrypt_api_key(api, p, outpath=enc_path)
                 os.environ['RR_API_PASS'] = p
                 RR_API_KEY = api
+                if 'api_status' in globals().get('preferences_data', {}):
+                    preferences_data['api_status'].set('Loaded')
                 messagebox.showinfo('API', 'Encrypted API key saved')
             except Exception as e:
                 messagebox.showerror('API', f'Encryption failed: {e}')
@@ -1568,6 +1791,8 @@ def launch_gui_and_run(default_pages, output_path):
                     pass
                 os.environ['RR_API_PASS'] = p
                 RR_API_KEY = builtin
+                if 'api_status' in globals().get('preferences_data', {}):
+                    preferences_data['api_status'].set('Loaded')
                 messagebox.showinfo('API', f'Built-in key encrypted and saved to {enc_path}')
             except Exception as e:
                 messagebox.showerror('API', f'Failed to encrypt built-in key: {e}')
@@ -1578,14 +1803,24 @@ def launch_gui_and_run(default_pages, output_path):
     apimenu = tk.Menu(menubar, tearoff=0)
     apimenu.add_command(label='Enter API key...', command=lambda: handle_api_choice('Enter API key...'))
     apimenu.add_command(label='Use built-in (encrypted)', command=lambda: handle_api_choice('Use built-in (encrypted)'))
+    apimenu.add_separator()
+    apimenu.add_command(label='QRZ Diagnostics', command=open_qrz_diagnostics)
     menubar.add_cascade(label='API', menu=apimenu)
 
     # Preferences Menu with Model Selection and Customization
+    persistent_settings = load_persistent_settings()
+    for key, default in DEFAULT_PERSISTENT_SETTINGS.items():
+        if key not in persistent_settings:
+            persistent_settings[key] = default
+
     preferences_data = {
-        'selected_model': tk.StringVar(value='Generic'),
-        'customization_level': tk.StringVar(value='Default'),
+        'selected_model': tk.StringVar(value=persistent_settings.get('selected_model', 'Generic')),
+        'selected_source': tk.StringVar(value=persistent_settings.get('selected_source', 'RadioReference')),
+        'customization_level': tk.StringVar(value=persistent_settings.get('customization_level', 'Default')),
+        'api_status': tk.StringVar(value='Loaded' if RR_API_KEY else 'Not loaded'),
         'model_features': {},
-        'frs_gmrs_unlock': tk.IntVar(value=0)
+        'frs_gmrs_unlock': tk.IntVar(value=int(persistent_settings.get('frs_gmrs_unlock', 0)) if persistent_settings.get('frs_gmrs_unlock') is not None else 0),
+        'scanner_mode': tk.IntVar(value=int(persistent_settings.get('scanner_mode', 0)) if persistent_settings.get('scanner_mode') is not None else 0),
     }
     
     def open_preferences():
@@ -1633,7 +1868,21 @@ def launch_gui_and_run(default_pages, output_path):
         model_combo = ttk.Combobox(radio_scrollable_frame, textvariable=model_var, state='readonly', width=40)
         model_combo['values'] = [RADIO_MODELS[m]['name'] for m in RADIO_MODELS.keys()]
         model_combo.pack(fill='x', padx=10, pady=(5, 10))
-        
+
+        tk.Label(radio_scrollable_frame, text='Data Source:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 5))
+        source_var = tk.StringVar(value=preferences_data['selected_source'].get())
+        source_combo = ttk.Combobox(radio_scrollable_frame, textvariable=source_var, state='readonly', width=40)
+        source_combo['values'] = ['RadioReference', 'Radio Browser']
+        source_combo.pack(fill='x', padx=10, pady=(5, 10))
+        source_desc_var = tk.StringVar(value='Choose RadioReference for repeater frequencies, or Radio Browser for public broadcast station metadata.')
+        source_desc_label = tk.Label(radio_scrollable_frame, textvariable=source_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
+        source_desc_label.pack(anchor='w', padx=10, pady=(0, 15))
+
+        scanner_mode_var = preferences_data.get('scanner_mode') if preferences_data.get('scanner_mode') else tk.IntVar(value=0)
+        scanner_mode_cb = tk.Checkbutton(radio_scrollable_frame, text='Scanner mode (include WX but mark skipped)', variable=scanner_mode_var)
+        scanner_mode_cb.pack(anchor='w', padx=10, pady=(0, 12))
+        ToolTip(scanner_mode_cb, 'When enabled, NOAA/WX channels are still exported but marked as skipped so scanner mode passes over them.')
+
         # Model description
         model_desc_var = tk.StringVar(value=RADIO_MODELS['Generic']['description'])
         desc_label = tk.Label(radio_scrollable_frame, textvariable=model_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
@@ -1763,7 +2012,33 @@ def launch_gui_and_run(default_pages, output_path):
         export_canvas.pack(side='left', fill='both', expand=True)
         export_scrollbar.pack(side='right', fill='y')
         
-        # ===== TAB 3: SAFETY & STARTUP =====
+        # ===== TAB 3: RADIOREFERENCE API =====
+        api_frame = ttk.Frame(notebook)
+        notebook.add(api_frame, text='🔑 API Key')
+
+        api_canvas = tk.Canvas(api_frame)
+        api_scrollbar = ttk.Scrollbar(api_frame, orient='vertical', command=api_canvas.yview)
+        api_scrollable_frame = tk.Frame(api_canvas)
+        api_scrollable_frame.bind(
+            '<Configure>',
+            lambda e: api_canvas.configure(scrollregion=api_canvas.bbox('all'))
+        )
+        api_canvas.create_window((0, 0), window=api_scrollable_frame, anchor='nw')
+        api_canvas.configure(yscrollcommand=api_scrollbar.set)
+
+        tk.Label(api_scrollable_frame, text='RadioReference API Key', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 8))
+        tk.Label(api_scrollable_frame, text='Enter or manage your RadioReference API key for SOAP-backed repeater access.', wraplength=700, justify='left', fg='#666666', font=('Arial', 9)).pack(anchor='w', padx=10, pady=(0, 10))
+        tk.Label(api_scrollable_frame, textvariable=preferences_data['api_status'], font=('Arial', 9, 'bold'), fg='#006600').pack(anchor='w', padx=10, pady=(0, 12))
+
+        tk.Button(api_scrollable_frame, text='Enter API key...', command=lambda: handle_api_choice('Enter API key...'), bg='#1976D2', fg='white', width=20).pack(anchor='w', padx=10, pady=(0, 8))
+        tk.Button(api_scrollable_frame, text='Use built-in encrypted key', command=lambda: handle_api_choice('Use built-in (encrypted)'), bg='#1976D2', fg='white', width=20).pack(anchor='w', padx=10, pady=(0, 12))
+
+        tk.Label(api_scrollable_frame, text='After entering a key, the status above will update to Loaded.', wraplength=700, justify='left', fg='#666666', font=('Arial', 8)).pack(anchor='w', padx=10, pady=(0, 10))
+
+        api_canvas.pack(side='left', fill='both', expand=True)
+        api_scrollbar.pack(side='right', fill='y')
+        
+        # ===== TAB 4: SAFETY & STARTUP =====
         safety_frame = ttk.Frame(notebook)
         notebook.add(safety_frame, text='🛡️ Safety & Startup')
         
@@ -1844,7 +2119,10 @@ def launch_gui_and_run(default_pages, output_path):
         
         def on_apply():
             preferences_data['selected_model'].set(model_var.get())
+            preferences_data['selected_source'].set(source_var.get())
             preferences_data['customization_level'].set(custom_var.get())
+            preferences_data['scanner_mode'].set(scanner_mode_var.get())
+            preferences_data['frs_gmrs_unlock'].set(frs_pref_var.get())
             # Store safety/startup settings
             for key, var in safety_vars.items():
                 APP_SETTINGS[key]['value'] = var.get()
@@ -1856,6 +2134,13 @@ def launch_gui_and_run(default_pages, output_path):
                 enforce_model_constraints()
             except Exception:
                 pass
+            save_persistent_settings({
+                'selected_model': preferences_data['selected_model'].get(),
+                'selected_source': preferences_data['selected_source'].get(),
+                'customization_level': preferences_data['customization_level'].get(),
+                'scanner_mode': preferences_data['scanner_mode'].get(),
+                'frs_gmrs_unlock': preferences_data['frs_gmrs_unlock'].get(),
+            })
             pref_window.destroy()
             messagebox.showinfo('Preferences', f'✓ Settings saved!\nRadio Model: {model_var.get()}\nQuality Level: {custom_var.get()}')
         
@@ -1926,7 +2211,7 @@ def launch_gui_and_run(default_pages, output_path):
 
     def show_donation_dialog():
         dlg = tk.Toplevel(root)
-        dlg.title('Support ChirpScrape')
+        dlg.title('Support FreqFinder')
         dlg.geometry('450x180')
         dlg.grab_set()
         dlg.transient(root)
@@ -1934,7 +2219,7 @@ def launch_gui_and_run(default_pages, output_path):
         dlg.lift()
         dlg.focus()
         dlg.attributes('-topmost', True)
-        tk.Label(dlg, text="Please help pay for the numerous accounts, interfaces and time that I have spent on ChirpScrape.", wraplength=410, justify='left', font=(None, 11)).pack(padx=20, pady=(18, 10))
+        tk.Label(dlg, text="Please help pay for the numerous accounts, interfaces and time that I have spent on FreqFinder.", wraplength=410, justify='left', font=(None, 11)).pack(padx=20, pady=(18, 10))
         btn_frame = tk.Frame(dlg)
         btn_frame.pack(pady=(0, 16))
 
@@ -2166,6 +2451,21 @@ def launch_gui_and_run(default_pages, output_path):
         if exporting_flag.get('running'):
             messagebox.showwarning('Export', 'An export is already running. Please wait.')
             return
+        def cleanup_export():
+            try:
+                export_btn.config(state='normal')
+            except Exception:
+                pass
+            exporting_flag['running'] = False
+            try:
+                _suppress_messageboxes(False)
+            except Exception:
+                pass
+            try:
+                _flush_dialog_queue()
+            except Exception:
+                pass
+
         exporting_flag['running'] = True
         # suppress dialogs while exporting to avoid per-row popups
         try:
@@ -2178,11 +2478,80 @@ def launch_gui_and_run(default_pages, output_path):
             pass
         pages = {}
         # Require at least one ZIP code and one band selected
+        selected_source = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
+        scanner_mode_enabled = bool(preferences_data.get('scanner_mode').get() if preferences_data.get('scanner_mode') else 0)
         zip_present = any(re.match(r'^\d{5}$', iv.get().strip() or '') for iv in input_vars)
         band_selected = any(v.get() for v in band_vars.values())
-        if not zip_present or not band_selected:
-            messagebox.showerror('Error', 'Must have at least one ZIP code and at least one band selected')
+        if selected_source == 'Radio Browser':
+            if not zip_present:
+                messagebox.showerror('Error', 'Radio Browser source requires at least one valid ZIP code')
+                cleanup_export()
+                return
+        else:
+            if not zip_present or not band_selected:
+                messagebox.showerror('Error', 'Must have at least one ZIP code and at least one band selected')
+                cleanup_export()
+                return
+
+        if scanner_mode_enabled and selected_source != 'Radio Browser':
+            # Scanner mode keeps NOAA/WX channels in the export, but will mark them skipped in the CSV.
+            if band_vars.get('NOAA') and band_vars['NOAA'].get():
+                messagebox.showinfo('Scanner mode', 'Scanner mode is enabled: NOAA/WX channels will be exported with the Scan/Skip flag set.')
+        if selected_source == 'Radio Browser':
+            rows_rb = []
+            unique_zips = []
+            for idx, iv in enumerate(input_vars):
+                u = iv.get().strip()
+                if not re.match(r'^\d{5}$', u):
+                    continue
+                if u not in unique_zips:
+                    unique_zips.append(u)
+                stations = get_radio_browser_broadcast_for_zip(u, limit=50)
+                if not stations:
+                    continue
+                for station in stations:
+                    rows_rb.append({
+                        'ZIP': u,
+                        'Name': station.get('name', ''),
+                        'URL': station.get('url', ''),
+                        'ResolvedURL': station.get('url_resolved', ''),
+                        'Tags': station.get('tags', ''),
+                        'Country': station.get('country', ''),
+                        'State': station.get('state', ''),
+                        'Codec': station.get('codec', ''),
+                        'Bitrate': station.get('bitrate', ''),
+                        'Language': station.get('language', ''),
+                        'LastCheck': station.get('lastchecktime', ''),
+                        'Latitude': station.get('geo_lat', ''),
+                        'Longitude': station.get('geo_long', ''),
+                    })
+            if not rows_rb:
+                messagebox.showerror('Error', 'No Radio Browser station results were found for the selected ZIPs.')
+                cleanup_export()
+                return
+            try:
+                from datetime import datetime
+                default_name = 'FreqFinder_RadioBrowser_'
+                if unique_zips:
+                    default_name += '-'.join(unique_zips[:6])
+                else:
+                    default_name += 'stations'
+                default_name += '_' + datetime.now().strftime('%b%Y') + '.csv'
+            except Exception:
+                default_name = 'FreqFinder_RadioBrowser.csv'
+            initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
+            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Save Radio Browser station CSV as')
+            if not save_path:
+                cleanup_export()
+                return
+            try:
+                df_rb = pd.DataFrame(rows_rb)
+                df_rb.to_csv(save_path, index=False)
+                messagebox.showinfo('Done', f'Wrote {len(rows_rb)} station rows to {save_path}')
+            except Exception as e:
+                messagebox.showerror('Error', f'Failed writing Radio Browser CSV: {e}')
             return
+
         for idx, iv in enumerate(input_vars):
             u = iv.get().strip()
             if not u:
@@ -2227,6 +2596,7 @@ def launch_gui_and_run(default_pages, output_path):
         sel_bands = [band_listbox.get(i) for i in range(band_listbox.size())]
         if not sel_bands:
             messagebox.showerror('Error', 'Select at least one band to export')
+            cleanup_export()
             return
 
         # Determine selected model and customization level for filtering
@@ -2237,6 +2607,7 @@ def launch_gui_and_run(default_pages, output_path):
 
         # run scraping and filter by selected bands
         rows = []
+        fetch_errors = []
         # Skip showing a fetch progress window; perform fetching silently
         fetch_total = max(1, len(pages))
         fetch_progress = 0
@@ -2245,7 +2616,11 @@ def launch_gui_and_run(default_pages, output_path):
 
         page_idx = 0
         for c, u in pages.items():
-            for tup in fetch_freqs_for_page(u):
+            try:
+                page_rows = list(fetch_freqs_for_page(u))
+                if not page_rows:
+                    fetch_errors.append((c, u, 'No repeater rows returned'))
+                for tup in page_rows:
                     # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint])
                     if len(tup) >= 5:
                         name, f, tone, duplex_hint, offset_hint = tup[0], tup[1], tup[2], tup[3], tup[4]
@@ -2324,6 +2699,19 @@ def launch_gui_and_run(default_pages, output_path):
                     if not band_label:
                         continue
                     rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint})
+            except Exception as exc:
+                fetch_errors.append((c, u, str(exc)))
+
+        if fetch_errors:
+            warning_text = 'Some RadioReference pages could not be fetched or parsed.\n'
+            warning_text += 'Only fixed-band NOAA/MURS/FRS-GMRS rows may be available.\n\n'
+            warning_text += '\n'.join(f'{label}: {err}' for label, _, err in fetch_errors[:5])
+            if len(fetch_errors) > 5:
+                warning_text += f'\n...and {len(fetch_errors)-5} more.'
+            try:
+                messagebox.showwarning('RadioReference fetch warning', warning_text)
+            except Exception:
+                print(warning_text)
         
         # update fetch progress after each page processed
         try:
@@ -2429,6 +2817,9 @@ def launch_gui_and_run(default_pages, output_path):
                     if any(d in lname for d in other_digital):
                         if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
                             continue
+            skip_value = ''
+            if scanner_mode_enabled and band == 'NOAA':
+                skip_value = 'Yes'
             df_rows.append({
                 'Name': name,
                 'Frequency': freq,
@@ -2441,7 +2832,7 @@ def launch_gui_and_run(default_pages, output_path):
                 'DtcsPolarity': dtcs_pol,
                 'Mode': 'FM',
                 'TStep': 5,
-                'Skip': '',
+                'Skip': skip_value,
                 'Comment': r.get('Comment','')
             })
 
@@ -2529,7 +2920,8 @@ def launch_gui_and_run(default_pages, output_path):
             except Exception:
                 default_name = output_path or 'chirp_output.csv'
 
-            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialfile=default_name, title='Save CSV as')
+            initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
+            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Save CSV as')
             if not save_path:
                 progress_window.destroy()
                 return
@@ -2639,6 +3031,7 @@ def launch_gui_and_run(default_pages, output_path):
             'MURS': {'requires_any': ['supports_tone', 'supports_mode']},
             'FRS/GMRS': {'requires_any': ['supports_duplex', 'supports_offset', 'supports_mode']},
             'NOAA': {'requires_any': ['supports_mode', 'supports_tone']},
+            'Emergency': {'requires_any': ['supports_mode', 'supports_tone', 'supports_duplex']},
         }
 
         # Disable or enable band checkbuttons based on model capabilities
@@ -2717,9 +3110,13 @@ def launch_gui_and_run(default_pages, output_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape RadioReference ham pages and produce CHIRP CSV")
+    parser = argparse.ArgumentParser(description="Scrape RadioReference ham pages and produce FreqFinder-compatible CSV")
     parser.add_argument('--pages', '-p', nargs='+', help='ZIP codes or Radioreference URLs (space separated)')
-    parser.add_argument('--output', '-o', default='chirp_output.csv', help='Output CSV file')
+    parser.add_argument('--output', '-o', default=DEFAULT_OUTPUT_FILE, help='Output CSV file')
+    parser.add_argument('--source', choices=['radioreference', 'radio_browser'], default='radioreference', help='Choose data source: RadioReference for repeater frequencies, or public Radio Browser for broadcast station metadata')
+    parser.add_argument('--include-broadcast', action='store_true', help='When using RadioReference, also show Radio Browser station metadata for each ZIP code state')
+    parser.add_argument('--delay', type=float, default=0.0, help='Seconds to wait between HTTP requests to avoid rate limits or blocking')
+    parser.add_argument('--qrz-stub', action='store_true', help='Print QRZ helper stub status and exit')
     # GUI is the default; removed '--no-gui' option per request
     parser.add_argument('--prompt', action='store_true', help='Force interactive prompt for pages')
     parser.add_argument('--callsign-col', type=int, default=2, help='Column index for callsign/license (0-based)')
@@ -2727,6 +3124,11 @@ def main():
     parser.add_argument('--tone-col', type=int, default=4, help='Column index for tone (0-based)')
     parser.add_argument('--gui', action='store_true', help='Launch GUI to enter ZIPs and select bands')
     args = parser.parse_args()
+
+    global REQUEST_DELAY_SECONDS
+    REQUEST_DELAY_SECONDS = float(args.delay or os.environ.get('FREQFINDER_REQUEST_DELAY', REQUEST_DELAY_SECONDS) or 0)
+    if REQUEST_DELAY_SECONDS > 0:
+        print(f'Using {REQUEST_DELAY_SECONDS:.2f}s delay between HTTP requests to avoid rate limiting.')
 
     rows = []
     # determine pages dict
@@ -2748,6 +3150,64 @@ def main():
                 pages = DEFAULT_PAGES
         else:
             pages = DEFAULT_PAGES
+
+    if args.qrz_stub:
+        helper = QRZHelper()
+        print('QRZ helper stub loaded.')
+        print('Login supported:', bool(helper.username or helper.password or helper.api_key))
+        print('Query example:', helper.lookup_callsign('K7ABC'))
+        return
+
+    if args.source == 'radio_browser':
+        rows = []
+        if not args.pages:
+            print('ERROR: --source radio_browser requires one or more ZIP codes passed via --pages')
+            return
+        for token in args.pages:
+            if not re.fullmatch(r'\d{5}', token):
+                print(f'Skipping non-ZIP token for radio_browser source: {token}')
+                continue
+            stations = get_radio_browser_broadcast_for_zip(token, limit=50)
+            if not stations:
+                print(f'No Radio Browser station metadata found for ZIP {token}')
+                continue
+            print(f'Radio Browser found {len(stations)} stations for ZIP {token} state')
+            for station in stations:
+                rows.append({
+                    'ZIP': token,
+                    'Name': station.get('name', ''),
+                    'URL': station.get('url', ''),
+                    'ResolvedURL': station.get('url_resolved', ''),
+                    'Tags': station.get('tags', ''),
+                    'Country': station.get('country', ''),
+                    'State': station.get('state', ''),
+                    'Codec': station.get('codec', ''),
+                    'Bitrate': station.get('bitrate', ''),
+                    'Language': station.get('language', ''),
+                    'LastCheck': station.get('lastchecktime', ''),
+                    'Latitude': station.get('geo_lat', ''),
+                    'Longitude': station.get('geo_long', ''),
+                })
+        if rows:
+            df = pd.DataFrame(rows)
+            df.to_csv(args.output, index=False)
+            print(f'Wrote {len(rows)} Radio Browser rows to {args.output}')
+        else:
+            print('No Radio Browser rows to write.')
+        return
+
+    if args.include_broadcast and args.pages:
+        found_any = False
+        for token in args.pages:
+            if re.fullmatch(r'\d{5}', token):
+                stations = get_radio_browser_broadcast_for_zip(token, limit=20)
+                if stations:
+                    found_any = True
+                    print(f"Radio Browser found {len(stations)} stations for ZIP {token} state")
+                    for station in stations[:10]:
+                        print(f"  {station.get('name','<unknown>')} - {station.get('url_resolved','')} - tags={station.get('tags','')}")
+        if not found_any:
+            print('No Radio Browser station metadata found for the requested ZIP codes.')
 
     # GUI is default whenever a desktop session is available; otherwise run CLI.
     if gui_session_available():

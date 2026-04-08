@@ -19,6 +19,6 @@ if (-not (Test-Path $PythonExe)) {
     --add-data "media;media" `
     --add-data "csv_files;csv_files" `
     --add-data "radioref.csv;." `
-    chirp_scraper.py
+    freqfinder.py
 
 Write-Host "Built: dist/FreqFinder.exe"

@@ -5,13 +5,13 @@ install: venv
 	. .venv/bin/activate && pip install -r requirements.txt
 
 bootstrap:
-	python3 chirp_scraper.py --help
+	python3 freqfinder.py --help
 
 run:
-	. .venv/bin/activate && .venv/bin/python chirp_scraper.py
+	. .venv/bin/activate && .venv/bin/python freqfinder.py
 
 run-gui:
-	. .venv/bin/activate && .venv/bin/python chirp_scraper.py --gui
+	. .venv/bin/activate && .venv/bin/python freqfinder.py --gui
 
 sdist:
 	python3 -m build --sdist

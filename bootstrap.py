@@ -65,7 +65,7 @@ def run_tests(python_exe):
         '-m',
         'py_compile',
         os.path.join(HERE, 'bootstrap.py'),
-        os.path.join(HERE, 'chirp_scraper.py'),
+        os.path.join(HERE, 'freqfinder.py'),
         os.path.join(HERE, 'rr_api.py'),
     ])
 
@@ -125,7 +125,7 @@ def run_security_scan():
 
 def launch_app(python_exe, gui=True, extra=None):
     extra = extra or []
-    cmd = [python_exe, os.path.join(HERE, 'chirp_scraper.py')]
+    cmd = [python_exe, os.path.join(HERE, 'freqfinder.py')]
     if gui:
         cmd.append('--gui')
     if extra:
@@ -239,8 +239,8 @@ def main():
 
     # Ensure a canonical screenshot filename is present for README and media references.
     try:
-        src = os.path.join(HERE, 'media', '26Feb_16_ChirpScrape.png')
-        dst = os.path.join(HERE, 'media', 'ChirpScrape_screenshot.png')
+        src = os.path.join(HERE, 'media', '26Feb_16_FreqFinder.png')
+        dst = os.path.join(HERE, 'media', 'FreqFinder_screenshot.png')
         if os.path.exists(src) and not os.path.exists(dst):
             try:
                 shutil.copy2(src, dst)

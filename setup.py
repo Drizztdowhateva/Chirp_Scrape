@@ -12,13 +12,13 @@ setup(
     version='0.1.0',
     description='RadioReference FreqFinder scraper',
     author='Tim Rohe',
-    py_modules=['chirp_scraper', 'make_radioref_list'],
+    py_modules=['freqfinder', 'make_radioref_list'],
     include_package_data=True,
     package_data={'': ['media/*']},
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
-            'freqfinder=chirp_scraper:main',
+            'freqfinder=freqfinder:main',
         ],
     },
 )

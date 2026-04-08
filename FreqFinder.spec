@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['chirp_scraper.py'],
+    ['freqfinder.py'],
     pathex=[],
     binaries=[],
     datas=[('media', 'media'), ('csv_files', 'csv_files'), ('radioref.csv', '.')],
