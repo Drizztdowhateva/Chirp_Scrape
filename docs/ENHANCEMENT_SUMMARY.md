@@ -1,4 +1,4 @@
-# ChirpScrape Enhancement Summary
+# FreqFinder Enhancement Summary
 
 ## Changes Implemented
 
@@ -95,7 +95,7 @@ Organized menu system:
 
 ## Key Files Modified
 
-### `chirp_scraper.py`
+### `freqfinder.py`
 - Added 400+ lines of new code
 - All backward compatible
 - Full error handling
@@ -159,7 +159,7 @@ All changes are:
 
 ## Summary
 
-The ChirpScrape application has been significantly enhanced with:
+The FreqFinder application has been significantly enhanced with:
 - Professional radio model support (5 models including DM32UV)
 - Four export quality levels for different user needs
 - Comprehensive tooltip system for guidance

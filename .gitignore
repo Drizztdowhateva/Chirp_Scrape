@@ -25,3 +25,7 @@ packages-microsoft-prod.deb
 # Sensitive credential files – never commit these
 .rr_api_pass
 rr_api.enc
+
+# Local build and temporary workspace files
+.gradle/
+FreqFinder_Generic_Cook_County_Illinois_Apr2026.csv

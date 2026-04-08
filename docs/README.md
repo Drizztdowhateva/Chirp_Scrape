@@ -1,6 +1,6 @@
-# Chirp_Scrape Documentation
+# FreqFinder Documentation
 
-This folder contains project documentation for Chirp_Scrape.
+This folder contains project documentation for FreqFinder.
 
 ## Core Guides
 - [Installation](INSTALL.md)

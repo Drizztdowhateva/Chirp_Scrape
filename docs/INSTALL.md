@@ -1,6 +1,6 @@
 # Installation
 
-This file provides installation steps for Chirp_Scrape.
+This file provides installation steps for FreqFinder.
 
 ## Prerequisites
 - Check the root README for platform requirements and dependencies.

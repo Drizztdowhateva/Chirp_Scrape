@@ -1,6 +1,6 @@
 # Usage
 
-This file provides usage guidance for Chirp_Scrape.
+This file provides usage guidance for FreqFinder.
 
 ## Quick Start
 1. Complete installation steps in docs/INSTALL.md.

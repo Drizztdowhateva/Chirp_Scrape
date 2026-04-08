@@ -1,4 +1,4 @@
-# 📱 ChirpScrape Social Media & Community Integration
+# 📱 FreqFinder Social Media & Community Integration
 
 **Version**: 2.2.1  
 **Status**: ✅ Security Audit Passed  
@@ -8,7 +8,7 @@
 
 ## 🎯 Mission
 
-Share the ChirpScrape experience across social media platforms while maintaining **enterprise-grade security** and **user privacy**.
+Share the FreqFinder experience across social media platforms while maintaining **enterprise-grade security** and **user privacy**.
 
 ---
 
@@ -41,7 +41,7 @@ Share the ChirpScrape experience across social media platforms while maintaining
 
 **Features**:
 - 📤 Share frequency export summaries
-- 👥 Join ChirpScrape community group
+- 👥 Join FreqFinder community group
 - 💬 Real-time frequency discussions
 - 📊 Community frequency maps
 - 🎯 Location-based frequency sharing
@@ -63,7 +63,7 @@ Share the ChirpScrape experience across social media platforms while maintaining
 
 **Features**:
 - 🐦 Quick frequency sharing
-- #️⃣ Community hashtags (#ChirpScrape, #RadioFrequencies)
+- #️⃣ Community hashtags (#FreqFinder, #RadioFrequencies)
 - 🔗 Link sharing
 - 💬 Community discussions
 - 📈 Release announcements
@@ -72,9 +72,9 @@ Share the ChirpScrape experience across social media platforms while maintaining
 ```
 "Just exported 250 frequencies for Los Angeles! 
 📻 VHF: 150 | UHF: 75 | NOAA: 25
-#ChirpScrape #RadioFrequencies #HamRadio"
+#FreqFinder #RadioFrequencies #HamRadio"
 
-"ChirpScrape v2.2.0 now features 3 Baofeng models!
+"FreqFinder v2.2.0 now features 3 Baofeng models!
 UV-5R | UV-82
 🔗 [GitHub Link]"
 ```
@@ -95,7 +95,7 @@ UV-5R | UV-82
 
 **Example Content**:
 ```
-"Introducing ChirpScrape v2.2.0:
+"Introducing FreqFinder v2.2.0:
 Enterprise-Grade Radio Frequency Management
 
 ✅ Military-grade encryption
@@ -153,7 +153,7 @@ Learn more about frequency management tools..."
 
 #### 🟡 **Community Sharing** (Default: OFF)
 ```
-[ ] ☐ Share with ChirpScrape community
+[ ] ☐ Share with FreqFinder community
     Shares with authenticated community members
     Community only (private group)
     Can mark as private after sharing
@@ -388,7 +388,7 @@ Report inappropriate content:
 ## 🎁 Incentive Programs
 
 ### Ambassador Program
-- 🌟 Become a ChirpScrape Ambassador
+- 🌟 Become a FreqFinder Ambassador
 - 📣 Exclusive early access to features
 - 🎁 Branded merchandise
 - 💰 Revenue share on referrals
@@ -417,7 +417,7 @@ Refer a friend:
 ### Contact Channels
 - 💬 [Discord Community](https://discord.gg/chirpscrape)
 - 📧 [Email Support](mailto:support@chirpscrape.example.com)
-- 🐦 [@ChirpScrape](https://twitter.com/ChirpScrape)
+- 🐦 [@FreqFinder](https://twitter.com/FreqFinder)
 - 📱 [Facebook Group](https://facebook.com/groups/chirpscrape)
 - 📘 [LinkedIn Company](https://linkedin.com/company/chirpscrape)
 
@@ -429,5 +429,5 @@ Refer a friend:
 
 ---
 
-**© 2026 ChirpScrape Community**  
+**© 2026 FreqFinder Community**  
 **Secure | Private | Community-Driven**

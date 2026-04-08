@@ -1,4 +1,4 @@
-# 🎉 ChirpScrape v2.2.0 - Enhanced Radio Models & Safety Features
+# 🎉 FreqFinder v2.2.0 - Enhanced Radio Models & Safety Features
 
 **Release Date**: February 4, 2026
 
@@ -122,5 +122,5 @@ Coming in future releases:
 ---
 
 **© 2026 Tim Rohe**  
-**Repository**: [Chirp_Scrape](https://github.com/Drizztdowhateva/Chirp_Scrape)  
+**Repository**: [FreqFinder](https://github.com/Drizztdowhateva/Chirp_Scrape)  
 **Questions?** Email: trstechie@gmail.com

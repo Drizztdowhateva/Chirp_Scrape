@@ -1,4 +1,4 @@
-# ChirpScrape UI Enhancement Overview
+# FreqFinder UI Enhancement Overview
 
 ## Menu Structure
 
@@ -39,7 +39,7 @@
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║                          ChirpScrape                      [QR Code Area]  ║
+║                          FreqFinder                      [QR Code Area]  ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
 ║  ZIP Code 1:  [____________]  ← Resolved to → [County, State (ctid)]     ║
@@ -121,7 +121,7 @@
 
 ```
 ╔═════════════════════════════════════════════════════╗
-║  Getting Started with ChirpScrape                   ║
+║  Getting Started with FreqFinder                   ║
 ╠═════════════════════════════════════════════════════╣
 ║  [Scrollable Content Area]                          ║
 ║  ┌─────────────────────────────────────────────┐  ║
@@ -148,7 +148,7 @@
 ║  │ Click Export CSV to create your CHIRP file  │  ║
 ║  │                                              │  ║
 ║  │ 📱 Radio Models                              │  ║
-║  │ ChirpScrape supports:                        │  ║
+║  │ FreqFinder supports:                        │  ║
 ║  │ • Generic (all CHIRP radios)                │  ║
 ║  │ • DM32UV (DMR + analog)                     │  ║
 ║  │ • Baofeng (UV-5R/UV-82)                     │  ║

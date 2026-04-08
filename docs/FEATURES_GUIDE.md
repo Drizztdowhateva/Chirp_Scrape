@@ -1,7 +1,7 @@
-# ChirpScrape - Enhanced Features Guide
+# FreqFinder - Enhanced Features Guide
 
 ## Overview
-ChirpScrape has been significantly enhanced with professional-grade radio model support, comprehensive customization options, and extensive customer support features.
+FreqFinder has been significantly enhanced with professional-grade radio model support, comprehensive customization options, and extensive customer support features.
 
 ---
 

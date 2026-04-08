@@ -1,8 +1,8 @@
-# 🎉 ChirpScrape Major Enhancement - Complete Implementation
+# 🎉 FreqFinder Major Enhancement - Complete Implementation
 
 ## Executive Summary
 
-ChirpScrape has been significantly enhanced with **professional-grade radio model support**, **comprehensive customization options**, **customer service features**, **extensive user guidance**, and **improved donation experience**. The application now supports 4 radio models, 4 quality tiers, features a complete tooltip system, interactive Getting Started guide, and a professionally-styled donation portal.
+FreqFinder has been significantly enhanced with **professional-grade radio model support**, **comprehensive customization options**, **customer service features**, **extensive user guidance**, and **improved donation experience**. The application now supports 4 radio models, 4 quality tiers, features a complete tooltip system, interactive Getting Started guide, and a professionally-styled donation portal.
 
 **Status**: ✅ **PRODUCTION READY** | **Fully Backward Compatible** | **1958 Total Lines**
 
@@ -22,7 +22,7 @@ Each model displays:
 - Maximum channel capacity
 - Professional descriptions
 
-**Location**: Lines 210-280 in `chirp_scraper.py`
+**Location**: Lines 210-280 in `freqfinder.py`
 
 ### 2. **Export Quality & Customization Levels**
 Four export tiers for different use cases:
@@ -34,7 +34,7 @@ Four export tiers for different use cases:
 | **Advanced** | + Tone decode, Sorting | Power users |
 | **High Quality** | + Optimization, Metadata | Professional |
 
-**Location**: Lines 282-320 in `chirp_scraper.py`
+**Location**: Lines 282-320 in `freqfinder.py`
 
 ### 3. **Comprehensive Tooltip System**
 - **ToolTip Class**: Reusable tooltip widget (Lines 1312-1347)
@@ -49,7 +49,7 @@ Four export tiers for different use cases:
 - **Visual Section Headers** with helpful emojis
 - **Complete Feature Documentation** in-app
 
-**Location**: Lines 821-900 in `chirp_scraper.py`
+**Location**: Lines 821-900 in `freqfinder.py`
 
 ### 5. **Professional Preferences Dialog**
 Complete settings window with:
@@ -59,7 +59,7 @@ Complete settings window with:
 - Feature descriptions and comparisons
 - Professional centered layout
 
-**Location**: Lines 1083-1165 in `chirp_scraper.py`
+**Location**: Lines 1083-1165 in `freqfinder.py`
 
 ### 6. **Dynamic Model Options Panel**
 Real-time display showing:
@@ -68,7 +68,7 @@ Real-time display showing:
 - Supported features list
 - Auto-updates when preferences change
 
-**Location**: Lines 1664-1713 in `chirp_scraper.py`
+**Location**: Lines 1664-1713 in `freqfinder.py`
 
 ### 7. **Enhanced File Operations**
 - **Save As** menu option (File menu)
@@ -76,7 +76,7 @@ Real-time display showing:
 - No re-export needed
 - Integrated with preferences system
 
-**Location**: Lines 746-765 in `chirp_scraper.py`
+**Location**: Lines 746-765 in `freqfinder.py`
 
 ### 8. **Professional Export Progress Indicator**
 - Animated progress bar
@@ -84,7 +84,7 @@ Real-time display showing:
 - Centered on main window
 - Exception handling and recovery
 
-**Location**: Lines 1551-1600 in `chirp_scraper.py`
+**Location**: Lines 1551-1600 in `freqfinder.py`
 
 ### 9. **Organized Menu Structure**
 ```
@@ -112,7 +112,7 @@ Help → Getting Started ⭐ NEW, RadioReference, How-To, Contact
 - **Email Contact**: Easy access to support email
 
 **Location**: 
-- Dialog: Lines 1289-1311 in `chirp_scraper.py` 
+- Dialog: Lines 1289-1311 in `freqfinder.py` 
 - Portal: `media/index.html` (complete redesign)
 
 ---
@@ -384,7 +384,7 @@ Potential additions for future versions:
 
 ## 📝 Final Notes
 
-This enhancement represents a significant improvement to ChirpScrape's user experience, making it suitable for:
+This enhancement represents a significant improvement to FreqFinder's user experience, making it suitable for:
 - ✅ New users (Getting Started guide + Tooltips)
 - ✅ Casual users (Simple defaults, easy navigation)
 - ✅ Power users (Advanced settings, Quality levels)

@@ -1,4 +1,4 @@
-# ChirpScrape Changelog
+# FreqFinder Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -274,4 +274,4 @@ See LICENSE file for details.
 
 **Last Updated**: February 4, 2026  
 **Maintainer**: Tim Rohe (trstechie@gmail.com)  
-**Repository**: [Chirp_Scrape](https://github.com/Drizztdowhateva/Chirp_Scrape)
+**Repository**: [FreqFinder](https://github.com/Drizztdowhateva/Chirp_Scrape)
