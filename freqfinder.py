@@ -108,6 +108,18 @@ DEFAULT_PERSISTENT_SETTINGS = {
     'customization_level': 'Default',
     'scanner_mode': 0,
     'frs_gmrs_unlock': 0,
+    'preview_mode': 1,
+    'strict_freq_check': 0,
+    'auto_step_optimize': 0,
+    'filter_narrow_band': 0,
+    'sort_output': 0,
+    'remove_all_dups': 0,
+    'band_profiles': {},
+    'last_band_profile': '',
+    'last_opened_profile': '',
+    'last_zip_entries': [],
+    'recent_zip_sets': [],
+    'last_step_size': 5,
 }
 
 
@@ -124,15 +136,30 @@ def load_persistent_settings():
     return dict(DEFAULT_PERSISTENT_SETTINGS)
 
 
-def save_persistent_settings(data):
+def save_persistent_settings(settings):
     try:
         import json
-        safe = {k: data.get(k, DEFAULT_PERSISTENT_SETTINGS.get(k)) for k in DEFAULT_PERSISTENT_SETTINGS}
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as sf:
-            json.dump(safe, sf, indent=2)
+            json.dump(settings, sf, indent=2)
     except Exception:
         pass
 
+
+def save_last_user_state(profile_name, zip_values):
+    try:
+        settings = load_persistent_settings()
+        settings['last_band_profile'] = profile_name if profile_name else settings.get('last_band_profile', '')
+        settings['last_opened_profile'] = profile_name if profile_name else settings.get('last_opened_profile', '')
+        current_zips = [z for z in zip_values if z]
+        settings['last_zip_entries'] = current_zips
+        if current_zips:
+            recent = settings.get('recent_zip_sets', [])
+            if current_zips not in recent:
+                recent.insert(0, current_zips)
+                settings['recent_zip_sets'] = recent[:10]
+        save_persistent_settings(settings)
+    except Exception:
+        pass
 
 def http_get(url, timeout=15, headers=None, delay=None, **kwargs):
     """Shared HTTP GET helper using one session for connection reuse.
@@ -184,10 +211,15 @@ def http_get(url, timeout=15, headers=None, delay=None, **kwargs):
 
 # Try to load an encrypted RadioReference API key (optional)
 RR_API_KEY = None
+# Optional hardcoded API credentials.
+# Set these if you want the API key/passphrase embedded directly in the source.
+# NOTE: this is only recommended for trusted local deployments.
+HARDCODED_RR_API_KEY = None
+HARDCODED_RR_API_PASS = None
 try:
     from rr_api import load_api_key
     enc_path = os.path.join(os.path.dirname(__file__), 'rr_api.enc')
-    passphrase = os.environ.get('RR_API_PASS')
+    passphrase = os.environ.get('RR_API_PASS') or HARDCODED_RR_API_PASS
     if passphrase and os.path.exists(enc_path):
         try:
             RR_API_KEY = load_api_key(passphrase, enc_path)
@@ -196,26 +228,24 @@ try:
 except Exception:
     RR_API_KEY = None
 
-# Prefer an env-provided API key if present; otherwise load encrypted key if possible;
-# only create the built-in encrypted key when no user key is provided.
+# Prefer an env-provided API key if present; otherwise use hardcoded key or load encrypted key if possible.
 try:
-    # If user explicitly set RR_API_KEY env var, respect it and do nothing else
-    env_key = os.environ.get('RR_API_KEY')
-    if env_key:
-        RR_API_KEY = env_key
+    key_candidate = os.environ.get('RR_API_KEY') or HARDCODED_RR_API_KEY
+    if key_candidate:
+        RR_API_KEY = key_candidate
     else:
         import rr_api as _rr_api
         enc_path = os.path.join(os.path.dirname(__file__), 'rr_api.enc')
         passfile = os.path.abspath(os.path.join(os.path.dirname(__file__), '.rr_api_pass'))
-        # If RR_API_PASS is set and enc exists, try to load
-        passphrase = os.environ.get('RR_API_PASS')
+        # If RR_API_PASS is set, hardcoded pass is provided, or passfile exists, try to load
+        passphrase = os.environ.get('RR_API_PASS') or HARDCODED_RR_API_PASS
         if passphrase and os.path.exists(enc_path):
             try:
                 RR_API_KEY = _rr_api.load_api_key(passphrase, enc_path)
             except Exception:
                 RR_API_KEY = None
         else:
-            # If enc exists and we can read passfile, try that
+            # If enc exists and we can read passfile, try that as last resort
             if os.path.exists(enc_path) and os.path.exists(passfile) and RR_API_KEY is None:
                 try:
                     with open(passfile, 'r', encoding='utf-8') as pf:
@@ -228,9 +258,8 @@ try:
                             RR_API_KEY = None
                 except Exception:
                     RR_API_KEY = None
-            # No built-in key is bundled; users must supply their own via RR_API_KEY
-            # or RR_API_PASS environment variables, or through the Preferences dialog.
-            # (Hardcoding an API key in source is a security risk and has been removed.)
+            # No built-in key is bundled; users must supply their own via RR_API_KEY,
+            # RR_API_PASS, HARDCODED_RR_API_KEY, HARDCODED_RR_API_PASS, or through the Preferences dialog.
 except Exception:
     pass
 
@@ -307,10 +336,12 @@ DEFAULT_PAGES = {
 BAND_RANGES = {
     '70cm': [(420.0, 450.0)],
     '2m': [(144.0, 148.0)],
+    '1.25m': [(222.0, 225.0)],
     'NOAA': [(162.4, 162.55)],
     'MURS': [(151.82, 154.6)],
     'FRS/GMRS': [(462.0, 467.0)],
     # Emergency: heuristic ranges covering common public-safety analog bands
+    # This includes police, citywide, EMS, fire, and similar dispatch channels.
     'Emergency': [
         (30.0, 50.0),    # Low VHF (some legacy)
         (138.0, 174.0),  # VHF high-band (public safety)
@@ -318,6 +349,94 @@ BAND_RANGES = {
         (700.0, 900.0),  # 700/800 MHz public-safety ranges
     ],
 }
+
+PAGE_BAND_GROUPS = [
+    ('2m / 1.25m / 70cm', ['70cm', '1.25m', '2m']),
+    ('NOAA / MURS / FRS-GMRS', ['NOAA', 'MURS', 'FRS/GMRS']),
+    ('Emergency', ['Emergency']),
+]
+
+DEFAULT_BAND_PROFILES = {
+    'Emergency Comms': {
+        'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'order': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'emergency_types': ['Police', 'Fire', 'EMS', 'Citywide'],
+        'scanner_mode': True,
+    },
+    'Traveler': {
+        'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'order': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'emergency_types': ['Police', 'Fire', 'EMS', 'Citywide'],
+        'scanner_mode': True,
+    },
+    'HamScan': {
+        'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'order': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'emergency_types': [],
+        'scanner_mode': True,
+    },
+}
+
+EMERGENCY_TYPE_KEYWORDS = {
+    'Police': ['police', 'pd', 'sheriff', 'law', 'tac', 'tactical', 'law enforcement'],
+    'Fire': ['fire', 'fd', 'fireground', 'fire ground', 'fire dispatch', 'fire-tac', 'engine'],
+    'EMS': ['ems', 'ems-tac', 'ems:', 'ambulance', 'medical', 'emt'],
+    'Citywide': ['citywide', 'city-wide', 'city wide', 'c/w', 'cw'],
+}
+
+EMERGENCY_TYPE_CHANNEL_LIMIT = 3
+
+def emergency_row_type(row):
+    text = ' '.join(filter(None, [
+        str(row.get('Name', '')),
+        str(row.get('Comment', '')),
+        str(row.get('RawText', '')),
+    ])).lower()
+    for et, keywords in EMERGENCY_TYPE_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text:
+                return et
+    return None
+
+
+def limit_emergency_channels(rows, selected_emergency_types, locality_priority_fn, numeric_frequency_fn):
+    if not selected_emergency_types:
+        return rows
+    emergency_rows = [r for r in rows if r.get('Band') == 'Emergency']
+    if not emergency_rows:
+        return rows
+    other_rows = [r for r in rows if r.get('Band') != 'Emergency']
+    selected_emergency_types = [et for et in selected_emergency_types if et]
+    if not selected_emergency_types:
+        return rows
+    emergency_rows.sort(key=lambda r: (locality_priority_fn(r), numeric_frequency_fn(r.get('Frequency', 0))))
+    buckets = {et: [] for et in selected_emergency_types}
+    uncategorized = []
+    for r in emergency_rows:
+        et = emergency_row_type(r)
+        if et in buckets:
+            buckets[et].append(r)
+        else:
+            uncategorized.append(r)
+    chosen = []
+    for et in selected_emergency_types:
+        chosen.extend(buckets[et][:EMERGENCY_TYPE_CHANNEL_LIMIT])
+    remaining = max(0, len(selected_emergency_types) * EMERGENCY_TYPE_CHANNEL_LIMIT - len(chosen))
+    if remaining:
+        chosen.extend(uncategorized[:remaining])
+    return other_rows + chosen
+
+
+def is_analog_emergency_channel(name, row_text='', comment='', model_obj=None):
+    """Return True if the emergency row is usable by an analog-only radio."""
+    if model_obj and (model_obj.get('supports_p25') or model_obj.get('supports_digital_mode')):
+        return True
+    combined = ' '.join(filter(None, [row_text or '', name or '', comment or ''])).lower()
+    if not combined:
+        return True
+    if re.search(r'\b(?:p25(?:e)?|project 25|edacs|dmr|nxdn|tdma|trunk|trunked|talkgroup|tg|starcom21|phase ii|digital|simulcast)\b', combined):
+        return False
+    return True
 
 # Radio Model Definitions with Supported Features
 RADIO_MODELS = {
@@ -332,8 +451,7 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-        'supports_comment': True,
-        'max_channels': 10000,
+    'supports_1_25': False,
         'tone_frequencies': True,
         'description': 'Compatible with most CHIRP-supported radios'
     },
@@ -349,10 +467,41 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-        'supports_comment': True,
-        'max_channels': 128,
+    'supports_1_25': False,
         'tone_frequencies': True,
-        'description': 'Popular budget dual-band UHF/VHF handheld (includes UV-5R Mini variant)'
+        'description': 'Popular budget dual-band UHF/VHF handheld. Includes UV-5R Mini and UV-5R Plus variants.'
+    },
+
+    'Baofeng_UV5R_Mini': {
+        'name': 'Baofeng UV-5R Mini',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+    'supports_1_25': False,
+        'tone_frequencies': True,
+        'description': 'UV-5R Mini variant with the same core features and compatibility as UV-5R.'
+    },
+
+    'Baofeng_UV5R_Plus': {
+        'name': 'Baofeng UV-5R Plus',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+    'supports_1_25': False,
+        'tone_frequencies': True,
+        'description': 'UV-5R Plus variant with expanded firmware compatibility and same channel support.'
     },
 
     'Baofeng_UV82': {
@@ -369,7 +518,24 @@ RADIO_MODELS = {
         'supports_comment': True,
         'max_channels': 128,
         'tone_frequencies': True,
-        'description': 'Rugged dual-band UHF/VHF handheld - Waterproof variant'
+        'description': 'Rugged dual-band UHF/VHF handheld. Includes UV-82LP and UV-82X variants.'
+    },
+
+    'Baofeng_UV82_LP': {
+        'name': 'Baofeng UV-82LP',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'max_channels': 128,
+        'tone_frequencies': True,
+        'description': 'Low-power UV-82LP variant with the same feature set and compatibility as UV-82.'
     },
     'Motorola': {
         'name': 'Motorola (Professional)',
@@ -587,7 +753,7 @@ def parse_rr_html(html_text):
                         break
             except Exception:
                 pass
-            out.append((name, f, tone, duplex_hint, offset_hint))
+            out.append((name, f, tone, duplex_hint, offset_hint, other_texts))
     return out
 
 
@@ -641,6 +807,59 @@ def fetch_freqs_for_page(url):
     # fallback: always scrape directly when API path is unavailable or returns nothing
     return scrape_rr(url)
 
+
+def get_rr_counterpart_page(url, target_page):
+    """Return a `ham` or `emergency` variant page URL for a RadioReference CTID or ZIP page."""
+    if not url:
+        return url
+    if re.search(r'/(ham|emergency)/?$', url, flags=re.I):
+        return re.sub(r'/(ham|emergency)/?$', f'/{target_page}', url, flags=re.I)
+    return url
+
+
+BAND_TOKEN_ALIASES = {
+    '2M': '2m',
+    '70CM': '70cm',
+    '1.25M': '1.25m',
+    '125M': '1.25m',
+    'NOAA': 'NOAA',
+    'EMERGENCY': 'Emergency',
+    'MURS': 'MURS',
+    'FRS': 'FRS/GMRS',
+    'GMRS': 'FRS/GMRS',
+    'FRSGMRS': 'FRS/GMRS',
+}
+
+
+def normalize_band_token(token):
+    token = token or ''
+    normalized = re.sub(r'[^A-Z0-9]', '', token.strip().upper())
+    return normalized
+
+
+def canonical_band_name(token):
+    return BAND_TOKEN_ALIASES.get(normalize_band_token(token))
+
+
+def is_band_token(token):
+    return canonical_band_name(token) is not None
+
+
+def parse_input_tokens(text):
+    if not text:
+        return []
+    return [tok for tok in re.split(r"[\s,;]+", text.strip()) if tok]
+
+
+def extract_band_tokens(text):
+    bands = []
+    for tok in parse_input_tokens(text):
+        band = canonical_band_name(tok)
+        if band and band not in bands:
+            bands.append(band)
+    return bands
+
+
 def get_pages_from_user():
     """Get a dict of {label: url} from the user.
 
@@ -651,10 +870,13 @@ def get_pages_from_user():
     Input may be comma/space separated tokens. Tokens that look like URLs
     (start with http) are used directly. Otherwise tokens are treated as
     US ZIP codes and a Radioreference browse-by-zip URL is constructed.
+
+    Band names are not page selectors; they should be chosen separately in the GUI.
     """
     prompt_text = (
         "Enter ZIP codes or Radioreference URLs (comma or space separated).\n"
-        "Examples: 60601, 1319, https://www.radioreference.com/db/browse/ctid/606/ham"
+        "Examples: 60601, 1319, https://www.radioreference.com/db/browse/ctid/606/ham\n"
+        "Bands: 2m, 70cm, 1.25m, NOAA, Emergency can also be typed and will be treated as band selections."
     )
 
     input_str = None
@@ -703,18 +925,25 @@ def get_pages_from_user():
             print("No input available; exiting.")
             sys.exit(1)
 
-    tokens = [t for t in re.split(r"[,\s]+", input_str) if t]
+    tokens = parse_input_tokens(input_str)
     pages = {}
+    bands = []
     for t in tokens:
+        if is_band_token(t):
+            band = canonical_band_name(t)
+            if band and band not in bands:
+                bands.append(band)
+            continue
         if t.startswith("http://") or t.startswith("https://"):
             label = t
             pages[label] = t
-        else:
-            # treat as zip code (or simple identifier)
-            z = t
-            url = f"https://www.radioreference.com/db/browse/zip/{z}/ham"
-            pages[f"ZIP {z}"] = url
-    return pages
+            continue
+        if re.fullmatch(r'\d{5}', t):
+            url = f"https://www.radioreference.com/db/browse/zip/{t}/ham"
+            pages[f"ZIP {t}"] = url
+            continue
+        # unsupported token is ignored
+    return pages, bands
 
 
 def get_location_from_url(url):
@@ -743,6 +972,88 @@ def get_location_from_url(url):
     return None
 
 
+def get_remote_radioref_raw_url():
+    """Derive a raw GitHub URL for radioref.csv from the repository's Git remote."""
+    repo_dir = os.path.dirname(__file__)
+    git_dir = os.path.join(repo_dir, '.git')
+    if not os.path.isdir(git_dir):
+        return None
+    try:
+        remote = subprocess.check_output(
+            ['git', 'config', '--get', 'remote.origin.url'],
+            cwd=repo_dir,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return None
+
+    if not remote:
+        return None
+
+    m = re.match(r'(?:git@github\.com:|ssh://git@github\.com/)([^/]+)/([^/]+?)(?:\.git)?$', remote)
+    if m:
+        owner, repo = m.group(1), m.group(2)
+    else:
+        m = re.match(r'https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?$', remote)
+        if m:
+            owner, repo = m.group(1), m.group(2)
+        else:
+            return None
+    return f'https://raw.githubusercontent.com/{owner}/{repo}/main/radioref.csv'
+
+
+def refresh_rr_index():
+    """Attempt to refresh the local radioref.csv from a GitHub raw repository URL."""
+    csv_path = os.path.join(os.path.dirname(__file__), 'radioref.csv')
+    remote_url = get_remote_radioref_raw_url()
+    if not remote_url:
+        return False
+    try:
+        resp = http_get(remote_url, timeout=20)
+        if resp.status_code == 200 and resp.content:
+            try:
+                with open(csv_path, 'wb') as rf:
+                    rf.write(resp.content)
+                return True
+            except Exception:
+                return False
+    except Exception:
+        return False
+    return False
+
+
+def load_rr_index(force_refresh=False):
+    """Load RadioReference CTID index from radioref.csv.
+
+    Returns mapping from normalized 'County, State' or 'City, State' lowercased
+    labels to CTID IDs.
+    """
+    import csv
+
+    csv_path = os.path.join(os.path.dirname(__file__), 'radioref.csv')
+    if force_refresh or not os.path.exists(csv_path):
+        refreshed = refresh_rr_index()
+        if force_refresh and not refreshed:
+            message = 'Could not refresh radioref.csv from the configured repository. '
+            message += 'Using local data if present.'
+            print(message)
+
+    index = {}
+    try:
+        with open(csv_path, newline='', encoding='utf-8') as rf:
+            reader = csv.DictReader(rf)
+            for row in reader:
+                title = row.get('location_title', '').strip()
+                t = re.sub(r'\s*Amateur Radio$', '', title)
+                t = re.sub(r'\s*\([^)]*\)\s*$', '', t).strip()
+                if ',' in t and ('County' in t or 'City' in t):
+                    index[t.lower()] = row.get('id')
+    except Exception:
+        pass
+    return index
+
+
 def get_county_from_zip(zip_code):
     """Given a ZIP code, fetch the RR zip page and try to find the county page link (ctid).
 
@@ -764,7 +1075,7 @@ def get_county_from_zip(zip_code):
     except Exception:
         pass
 
-    # fallback: try to resolve county via zippopotam.us -> reverse geocode -> search RR
+    # fallback: try to resolve county via zippopotam.us -> reverse geocode -> local index -> search RR
     try:
         place = http_get(f'http://api.zippopotam.us/us/{zip_code}', timeout=8).json()
         places = place.get('places', [])
@@ -783,7 +1094,12 @@ def get_county_from_zip(zip_code):
                 county = addr.get('county')
                 state_name = addr.get('state') or state
                 if county and state_name:
-                    # search RadioReference for county page
+                    key = f"{county}, {state_name}".lower()
+                    rr_index = load_rr_index()
+                    ctid = rr_index.get(key)
+                    if ctid:
+                        return (f"{county}, {state_name}", f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham')
+                    # search RadioReference for county page if local index does not have it
                     rr_search = http_get(
                         'https://www.radioreference.com/search/',
                         params={'q': f"{county} {state_name}"},
@@ -957,6 +1273,7 @@ def launch_gui_and_run(default_pages, output_path):
         pass
 
     menubar = tk.Menu(root)
+    persistent_settings = load_persistent_settings()
 
     # Helper: center a Toplevel on the parent and clamp to screen so buttons stay visible
     def center_and_clamp(win, desired_w, desired_h, parent_win=None):
@@ -1062,8 +1379,12 @@ def launch_gui_and_run(default_pages, output_path):
             messagebox.showwarning('Save As', 'Export in progress — please wait until it completes.')
             return
         if exported_data['dataframe'] is None:
-            messagebox.showwarning('Save As', 'No data to save. Please export CSV first.')
-            return
+            df, pages = build_export_dataframe(show_warnings=True)
+            if df is None or len(df) == 0:
+                return
+            exported_data['dataframe'] = df
+            exported_data['row_count'] = len(df)
+            exported_data['pages'] = pages or {}
 
         # Create a small progress window and write row-by-row so user sees progress
         progress_window = tk.Toplevel(root)
@@ -1155,6 +1476,8 @@ def launch_gui_and_run(default_pages, output_path):
                     update_progress(f'Writing {i}/{total} rows...')
 
             progress_window.destroy()
+            exported_data['last_export_path'] = save_path
+            update_status_bar(exported_rows=total, profile_name=profile_var.get(), last_path=save_path)
             messagebox.showinfo('Done', f'Wrote {total} rows to {save_path}')
         except Exception as e:
             progress_window.destroy()
@@ -1193,9 +1516,83 @@ def launch_gui_and_run(default_pages, output_path):
             messagebox.showinfo('Open File', f'Loaded {len(df)} rows from {path}')
         except Exception as e:
             messagebox.showerror('Open File', f'Failed to open file: {e}')
-    
+
+    def load_recent_zip_set(zip_list):
+        for idx, iv in enumerate(input_vars):
+            iv.set(zip_list[idx] if idx < len(zip_list) else '')
+        save_last_user_state(profile_var.get(), [iv.get().strip() for iv in input_vars])
+        update_band_preview_and_summary()
+
+    def batch_export():
+        profile_names = sorted(band_profiles.keys())
+        if not profile_names:
+            messagebox.showwarning('Batch Export', 'No saved profiles to export.')
+            return
+        batch_win = tk.Toplevel(root)
+        batch_win.title('Batch Export Profiles')
+        batch_win.geometry('520x420')
+        batch_win.transient(root)
+        batch_win.grab_set()
+
+        tk.Label(batch_win, text='Select saved profiles to export:', font=('Arial', 11, 'bold')).pack(anchor='w', padx=12, pady=(12, 4))
+        listbox = tk.Listbox(batch_win, selectmode='multiple', height=10)
+        listbox.pack(fill='both', expand=True, padx=12, pady=(0, 12))
+        for name in profile_names:
+            listbox.insert('end', name)
+
+        def run_batch():
+            selected = [profile_names[i] for i in listbox.curselection()]
+            if not selected:
+                messagebox.showwarning('Batch Export', 'Choose at least one profile.')
+                return
+            outdir = filedialog.askdirectory(initialdir=DEFAULT_SAVE_DIR, title='Select export folder')
+            if not outdir:
+                return
+            errors = []
+            count = 0
+            for name in selected:
+                apply_profile(name)
+                df, pages = build_export_dataframe(show_warnings=False)
+                if df is None or len(df) == 0:
+                    errors.append(name)
+                    continue
+                safe_name = re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_') or 'profile'
+                from datetime import datetime
+                save_path = os.path.join(outdir, f'FreqFinder_{safe_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
+                try:
+                    import csv as _csv
+                    out_cols = list(df.columns)
+                    with open(save_path, 'w', newline='', encoding='utf-8') as wf:
+                        writer = _csv.DictWriter(wf, fieldnames=['Location'] + out_cols)
+                        writer.writeheader()
+                        for row_tup in df.itertuples(index=True, name=None):
+                            rec = {'Location': row_tup[0]}
+                            for c, v in zip(out_cols, row_tup[1:]):
+                                rec[c] = v
+                            writer.writerow(rec)
+                    count += 1
+                except Exception:
+                    errors.append(name)
+            if errors:
+                messagebox.showwarning('Batch Export', f'Export complete with errors. Failed: {", ".join(errors)}')
+            else:
+                messagebox.showinfo('Batch Export', f'Exported {count} profiles to {outdir}')
+            batch_win.destroy()
+
+        tk.Button(batch_win, text='Run Batch Export', command=run_batch, bg='#1976D2', fg='white', font=('Arial', 10), width=16).pack(pady=(0, 12))
+
     filemenu.add_command(label='Open File...', command=lambda: on_open_file())
+    filemenu.add_command(label='Quick Export', command=lambda: on_quick_export())
     filemenu.add_command(label='Save As...', command=on_save_as)
+    recent_zip_menu = tk.Menu(filemenu, tearoff=0)
+    recent_sets = persistent_settings.get('recent_zip_sets', [])
+    if recent_sets:
+        for idx, zset in enumerate(recent_sets[:8]):
+            label = f'{idx+1}: {", ".join(zset)}'
+            recent_zip_menu.add_command(label=label, command=lambda z=zset: load_recent_zip_set(z))
+    else:
+        recent_zip_menu.add_command(label='No recent ZIP sets', state='disabled')
+    filemenu.add_cascade(label='Recent ZIP Sets', menu=recent_zip_menu)
     filemenu.add_separator()
     
     def on_exit():
@@ -1614,6 +2011,7 @@ def launch_gui_and_run(default_pages, output_path):
         txt.insert('end', '===========\n')
         txt.insert('end', f'Selected source: {source_name}\n')
         txt.insert('end', f'RadioReference index loaded: {bool(rr_index)} (radioref.csv)\n')
+        txt.insert('end', f'RadioReference index remote source: {get_remote_radioref_raw_url() or "not configured"}\n')
         txt.insert('end', f'Radio Browser API base: {RADIO_BROWSER_API_BASE}\n')
         txt.insert('end', f'QRZ helper stub available: yes\n')
         txt.insert('end', f'QRZ credentials environment present: {bool(os.environ.get("RR_API_KEY") or os.environ.get("RR_API_PASS"))}\n')
@@ -1799,6 +2197,17 @@ def launch_gui_and_run(default_pages, output_path):
         else:
             messagebox.showwarning('API', f'Unknown API action: {selection}')
 
+    def refresh_rr_index_ui():
+        csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'radioref.csv'))
+        refreshed = refresh_rr_index()
+        if refreshed:
+            messagebox.showinfo('RadioReference Index', f'radioref.csv was updated from online repository and saved to {csv_path}')
+        else:
+            if os.path.exists(csv_path):
+                messagebox.showwarning('RadioReference Index', 'Could not refresh radioref.csv from the repository. Using local radioref.csv instead.')
+            else:
+                messagebox.showwarning('RadioReference Index', 'Could not refresh radioref.csv from the repository, and no local index is available.')
+
     # Add API menu to the menubar (commands mirror previous dropdown)
     apimenu = tk.Menu(menubar, tearoff=0)
     apimenu.add_command(label='Enter API key...', command=lambda: handle_api_choice('Enter API key...'))
@@ -1817,12 +2226,19 @@ def launch_gui_and_run(default_pages, output_path):
         'selected_model': tk.StringVar(value=persistent_settings.get('selected_model', 'Generic')),
         'selected_source': tk.StringVar(value=persistent_settings.get('selected_source', 'RadioReference')),
         'customization_level': tk.StringVar(value=persistent_settings.get('customization_level', 'Default')),
+        'step_size': tk.IntVar(value=int(persistent_settings.get('last_step_size', 5)) if persistent_settings.get('last_step_size') is not None else 5),
+        'preview_mode': tk.IntVar(value=int(persistent_settings.get('preview_mode', 1)) if persistent_settings.get('preview_mode') is not None else 1),
+        'strict_freq_check': tk.IntVar(value=int(persistent_settings.get('strict_freq_check', 0)) if persistent_settings.get('strict_freq_check') is not None else 0),
+        'auto_step_optimize': tk.IntVar(value=int(persistent_settings.get('auto_step_optimize', 0)) if persistent_settings.get('auto_step_optimize') is not None else 0),
+        'filter_narrow_band': tk.IntVar(value=int(persistent_settings.get('filter_narrow_band', 0)) if persistent_settings.get('filter_narrow_band') is not None else 0),
+        'sort_output': tk.IntVar(value=int(persistent_settings.get('sort_output', 0)) if persistent_settings.get('sort_output') is not None else 0),
+        'remove_all_dups': tk.IntVar(value=int(persistent_settings.get('remove_all_dups', 0)) if persistent_settings.get('remove_all_dups') is not None else 0),
         'api_status': tk.StringVar(value='Loaded' if RR_API_KEY else 'Not loaded'),
         'model_features': {},
         'frs_gmrs_unlock': tk.IntVar(value=int(persistent_settings.get('frs_gmrs_unlock', 0)) if persistent_settings.get('frs_gmrs_unlock') is not None else 0),
         'scanner_mode': tk.IntVar(value=int(persistent_settings.get('scanner_mode', 0)) if persistent_settings.get('scanner_mode') is not None else 0),
     }
-    
+
     def open_preferences():
         pref_window = tk.Toplevel(root)
         pref_window.title('Preferences')
@@ -1868,6 +2284,7 @@ def launch_gui_and_run(default_pages, output_path):
         model_combo = ttk.Combobox(radio_scrollable_frame, textvariable=model_var, state='readonly', width=40)
         model_combo['values'] = [RADIO_MODELS[m]['name'] for m in RADIO_MODELS.keys()]
         model_combo.pack(fill='x', padx=10, pady=(5, 10))
+        ToolTip(model_combo, 'Choose the radio model to match supported features and limit exports to compatible settings')
 
         tk.Label(radio_scrollable_frame, text='Data Source:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 5))
         source_var = tk.StringVar(value=preferences_data['selected_source'].get())
@@ -1985,6 +2402,19 @@ def launch_gui_and_run(default_pages, output_path):
         
         custom_desc_label = tk.Label(export_scrollable_frame, textvariable=custom_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
         custom_desc_label.pack(anchor='w', padx=10, pady=(15, 10))
+
+        step_label = tk.Label(export_scrollable_frame, text='Channel Step Size (kHz):', font=('Arial', 10, 'bold'))
+        step_label.pack(anchor='w', padx=10, pady=(10, 4))
+        step_size_var = tk.IntVar(value=preferences_data['step_size'].get())
+        step_combo = ttk.Combobox(export_scrollable_frame, textvariable=step_size_var, state='readonly', width=10)
+        step_combo['values'] = [5, 10, 12, 15, 20]
+        step_combo.pack(anchor='w', padx=10, pady=(0, 10))
+        ToolTip(step_combo, 'Select the radio channel step/increment size used in the exported programming file')
+
+        preview_mode_var = tk.IntVar(value=preferences_data['preview_mode'].get())
+        preview_mode_cb = tk.Checkbutton(export_scrollable_frame, text='Enable Preview Mode (show skip flags in CSV preview)', variable=preview_mode_var)
+        preview_mode_cb.pack(anchor='w', padx=10, pady=(0, 12))
+        ToolTip(preview_mode_cb, 'When enabled, Preview/Print shows the actual export CSV including Skip flags')
         
         # Details for each level
         tk.Label(export_scrollable_frame, text='Features in Selected Quality Level:', font=('Arial', 9, 'bold')).pack(anchor='w', padx=10, pady=(5, 5))
@@ -2031,9 +2461,11 @@ def launch_gui_and_run(default_pages, output_path):
         tk.Label(api_scrollable_frame, textvariable=preferences_data['api_status'], font=('Arial', 9, 'bold'), fg='#006600').pack(anchor='w', padx=10, pady=(0, 12))
 
         tk.Button(api_scrollable_frame, text='Enter API key...', command=lambda: handle_api_choice('Enter API key...'), bg='#1976D2', fg='white', width=20).pack(anchor='w', padx=10, pady=(0, 8))
-        tk.Button(api_scrollable_frame, text='Use built-in encrypted key', command=lambda: handle_api_choice('Use built-in (encrypted)'), bg='#1976D2', fg='white', width=20).pack(anchor='w', padx=10, pady=(0, 12))
+        tk.Button(api_scrollable_frame, text='Use built-in encrypted key', command=lambda: handle_api_choice('Use built-in (encrypted)'), bg='#1976D2', fg='white', width=20).pack(anchor='w', padx=10, pady=(0, 8))
+        tk.Button(api_scrollable_frame, text='Refresh RadioReference index', command=refresh_rr_index_ui, bg='#1976D2', fg='white', width=28).pack(anchor='w', padx=10, pady=(0, 12))
 
-        tk.Label(api_scrollable_frame, text='After entering a key, the status above will update to Loaded.', wraplength=700, justify='left', fg='#666666', font=('Arial', 8)).pack(anchor='w', padx=10, pady=(0, 10))
+        idx_status = 'present' if os.path.exists(os.path.join(os.path.dirname(__file__), 'radioref.csv')) else 'missing'
+        tk.Label(api_scrollable_frame, text=f'Local RadioReference index is currently {idx_status}. If online, press Refresh to update; if offline, local data will be used.', wraplength=700, justify='left', fg='#666666', font=('Arial', 8)).pack(anchor='w', padx=10, pady=(0, 10))
 
         api_canvas.pack(side='left', fill='both', expand=True)
         api_scrollbar.pack(side='right', fill='y')
@@ -2101,7 +2533,7 @@ def launch_gui_and_run(default_pages, output_path):
         }
         
         for key, config in tweaks_config.items():
-            var = tk.BooleanVar(value=False)
+            var = preferences_data.get(key) if preferences_data.get(key) else tk.IntVar(value=0)
             tweak_vars[key] = var
             
             cb = tk.Checkbutton(tweaks_scrollable_frame, text=config['label'], variable=var, font=('Arial', 10))
@@ -2121,6 +2553,8 @@ def launch_gui_and_run(default_pages, output_path):
             preferences_data['selected_model'].set(model_var.get())
             preferences_data['selected_source'].set(source_var.get())
             preferences_data['customization_level'].set(custom_var.get())
+            preferences_data['step_size'].set(step_size_var.get())
+            preferences_data['preview_mode'].set(preview_mode_var.get())
             preferences_data['scanner_mode'].set(scanner_mode_var.get())
             preferences_data['frs_gmrs_unlock'].set(frs_pref_var.get())
             # Store safety/startup settings
@@ -2140,6 +2574,13 @@ def launch_gui_and_run(default_pages, output_path):
                 'customization_level': preferences_data['customization_level'].get(),
                 'scanner_mode': preferences_data['scanner_mode'].get(),
                 'frs_gmrs_unlock': preferences_data['frs_gmrs_unlock'].get(),
+                'last_step_size': preferences_data['step_size'].get(),
+                'preview_mode': preferences_data['preview_mode'].get(),
+                'strict_freq_check': preferences_data['strict_freq_check'].get(),
+                'auto_step_optimize': preferences_data['auto_step_optimize'].get(),
+                'filter_narrow_band': preferences_data['filter_narrow_band'].get(),
+                'sort_output': preferences_data['sort_output'].get(),
+                'remove_all_dups': preferences_data['remove_all_dups'].get(),
             })
             pref_window.destroy()
             messagebox.showinfo('Preferences', f'✓ Settings saved!\nRadio Model: {model_var.get()}\nQuality Level: {custom_var.get()}')
@@ -2155,59 +2596,19 @@ def launch_gui_and_run(default_pages, output_path):
     prefmenu.add_command(label='Radio & Export Settings', command=open_preferences)
     menubar.add_cascade(label='Preferences', menu=prefmenu)
 
+    filemenu.add_command(label='Advanced Settings...', command=open_preferences)
+
     # Attach Help menu after Preferences so order is File -> API -> Preferences -> Help
     menubar.add_cascade(label='Help', menu=helpmenu)
     root.config(menu=menubar)
 
-    # Make window wider to fit content and provide an area on the right for a QR image
     root.geometry('1100x700')
     root.resizable(True, True)
-    # Reserve a fixed right column for the QR image so it doesn't overlap inputs
-    root.grid_columnconfigure(3, minsize=260, weight=0)
+    root.grid_columnconfigure(2, weight=1)
 
-    # Load and display CashApp QR on the right-hand area if available
-    try:
-        img_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'media', 'CashApp_QR.png'))
-        qr_img = None
-        # Prefer PIL for reliable PNG handling and resizing
-        try:
-            from PIL import Image, ImageTk
-            im = Image.open(img_path)
-            im.thumbnail((360, 360))
-            qr_img = ImageTk.PhotoImage(im)
-        except Exception:
-            try:
-                # Fallback to Tk PhotoImage and subsample if needed
-                tmp = tk.PhotoImage(file=img_path)
-                w = tmp.width()
-                h = tmp.height()
-                max_dim = 360
-                factor = 1
-                if w > max_dim or h > max_dim:
-                    # subsample accepts integer factors
-                    factor = int(max(1, (w + max_dim - 1) // max_dim, (h + max_dim - 1) // max_dim))
-                    tmp = tmp.subsample(factor, factor)
-                qr_img = tmp
-            except Exception:
-                qr_img = None
-        if qr_img:
-            img_label = tk.Label(root, image=qr_img)
-            img_label.image = qr_img
-            # Grid the QR into the reserved right column so it cannot overlap the entry fields
-            img_label.grid(row=0, column=3, rowspan=12, padx=12, pady=8, sticky='ne')
-
-            # Separate clickable note under the QR code pointing to the Donations menu
-            try:
-                note = tk.Label(root, text='Donation options available in Help: Contact > Donations', wraplength=240, justify='center', font=('Arial', 9, 'underline'), fg='#0066cc', cursor='hand2')
-                note.grid(row=12, column=3, padx=12, pady=(2,12), sticky='n')
-                try:
-                    note.bind('<Button-1>', lambda e: open_donations())
-                except Exception:
-                    pass
-            except Exception:
-                pass
-    except Exception:
-        pass
+    donation_link = tk.Label(root, text='Support FreqFinder', fg='#0066cc', cursor='hand2', font=('Arial', 10, 'underline'))
+    donation_link.grid(row=0, column=0, columnspan=4, sticky='e', padx=8, pady=(6, 0))
+    donation_link.bind('<Button-1>', lambda e: open_donations())
 
     def show_donation_dialog():
         dlg = tk.Toplevel(root)
@@ -2289,6 +2690,9 @@ def launch_gui_and_run(default_pages, output_path):
     # Input entries (accept either full Radioreference URL or a ZIP code)
     input_vars = [tk.StringVar() for _ in range(4)]
     resolved_labels = [tk.StringVar(value='') for _ in range(4)]
+    resolved_label_widgets = []
+    last_zips = persistent_settings.get('last_zip_entries', [])
+    input_start_row = 1
 
     # load radioref index (map normalized 'county, state' -> ctid)
     rr_index = {}
@@ -2312,15 +2716,24 @@ def launch_gui_and_run(default_pages, output_path):
         v = input_vars[idx].get().strip()
         if not v:
             resolved_labels[idx].set('')
+            resolved_label_widgets[idx].config(fg='#666666')
             return
-        # if full URL, try to extract location name from page
-        if v.startswith('http://') or v.startswith('https://'):
-            label = get_location_from_url(v) or ''
-            resolved_labels[idx].set(label)
+        tokens = parse_input_tokens(v)
+        band_tokens = extract_band_tokens(v)
+        url_tokens = [tok for tok in tokens if tok.startswith('http://') or tok.startswith('https://')]
+        zip_tokens = [tok for tok in tokens if re.fullmatch(r'^\d{5}$', tok)]
+
+        if url_tokens:
+            label = get_location_from_url(url_tokens[0]) or ''
+            msg = f'URL detected ✓ {label}'
+            if band_tokens:
+                msg += f' | Bands: {", ".join(band_tokens)}'
+            resolved_labels[idx].set(msg)
+            resolved_label_widgets[idx].config(fg='#008000')
             return
-        # if looks like ZIP code
-        if re.match(r'^\d{5}$', v):
-            # geocode via zippopotam.us -> then reverse geocode for county
+
+        if zip_tokens:
+            v = zip_tokens[0]
             try:
                 pr = http_get(f'http://api.zippopotam.us/us/{v}', timeout=6)
                 pj = pr.json()
@@ -2340,78 +2753,456 @@ def launch_gui_and_run(default_pages, output_path):
                         if county and state:
                             key = f"{county}, {state}".lower()
                             ctid = rr_index.get(key)
-                            if ctid:
-                                resolved_labels[idx].set(f"{county}, {state}  (ctid {ctid})")
-                            else:
-                                resolved_labels[idx].set(f"{county}, {state}  (no ctid)")
+                            msg = f'✓ {county}, {state}  '
+                            msg += f'(ctid {ctid})' if ctid else '(no ctid)'
+                            if band_tokens:
+                                msg += f' | Bands: {", ".join(band_tokens)}'
+                            resolved_labels[idx].set(msg)
+                            resolved_label_widgets[idx].config(fg='#008000')
                             return
             except Exception:
                 pass
+
+        if band_tokens:
+            resolved_labels[idx].set(f'Band tokens: {", ".join(band_tokens)}')
+            resolved_label_widgets[idx].config(fg='#0066CC')
+            return
+
         # otherwise, show raw value
-        resolved_labels[idx].set('')
+        resolved_labels[idx].set('✗ Invalid ZIP/URL')
+        resolved_label_widgets[idx].config(fg='#AA0000')
 
     for i, iv in enumerate(input_vars, start=1):
+        if i <= len(last_zips):
+            iv.set(last_zips[i-1])
+
         label = tk.Label(root, text=f'Zip Code {i}:')
-        label.grid(row=i-1, column=0, sticky='w')
+        label.grid(row=input_start_row + i-1, column=0, sticky='w', padx=4)
         ToolTip(label, 'Enter a 5-digit ZIP code or RadioReference URL\nto search for frequencies in that area')
         
-        ent = tk.Entry(root, textvariable=iv, width=12)
-        ent.grid(row=i-1, column=1, sticky='w')
-        ToolTip(ent, 'ZIP Code: Searches for repeaters in that area\nURL: Directly uses RadioReference page')
+        ent = tk.Entry(root, textvariable=iv, width=14)
+        ent.grid(row=input_start_row + i-1, column=1, sticky='w', padx=4)
+        ToolTip(ent, 'ZIP Code: Searches for repeaters in that area\nURL: Directly uses RadioReference page\nBand tokens like 2m, 70cm, 1.25m, NOAA, Emergency are recognized and applied as selected bands.')
         
         # resolved label to the right
-        resolved_lbl = tk.Label(root, textvariable=resolved_labels[i-1], width=40, anchor='w')
-        resolved_lbl.grid(row=i-1, column=2, sticky='w')
+        resolved_lbl = tk.Label(root, textvariable=resolved_labels[i-1], anchor='w', fg='#666666', wraplength=320, justify='left')
+        resolved_lbl.grid(row=input_start_row + i-1, column=2, sticky='w', padx=4)
+        resolved_label_widgets.append(resolved_lbl)
         ToolTip(resolved_lbl, 'Shows the county/state location found\nand its RadioReference ID (ctid)')
         
         # trace changes
         iv.trace_add('write', lambda *_i, idx=i-1: resolve_input(idx))
+        if iv.get().strip():
+            resolve_input(i-1)
 
-    # Bands checkbuttons and listbox - place below the input boxes and stack vertically
-    start_row = len(input_vars)
-    bands_label = tk.Label(root, text='Available Bands:')
-    bands_label.grid(row=start_row, column=0, padx=8, sticky='w')
-    ToolTip(bands_label, 'Select which frequency bands to include\nin your exported CSV file')
-    
+    # Bands profile system and tabbed band plan selection
+    start_row = input_start_row + len(input_vars)
+    local_settings = load_persistent_settings()
+    band_profiles = local_settings.get('band_profiles', {}) or {}
+    for name, profile in DEFAULT_BAND_PROFILES.items():
+        band_profiles.setdefault(name, profile)
+
+    def save_band_profiles():
+        nonlocal band_profiles
+        settings = load_persistent_settings()
+        settings['band_profiles'] = band_profiles
+        save_persistent_settings(settings)
+
+    def refresh_profile_list():
+        names = sorted(band_profiles.keys())
+        profile_combo['values'] = names
+        try:
+            profile_compare_combo['values'] = names
+        except Exception:
+            pass
+
+    def get_selected_band_order():
+        return [band_listbox.get(i) for i in range(band_listbox.size())]
+
+    def set_selected_bands(bands, order=None):
+        band_listbox.delete(0, tk.END)
+        if order is None:
+            order = bands
+        for band in order:
+            if band in BAND_RANGES and band in bands:
+                band_listbox.insert(tk.END, band)
+        for band in bands:
+            if band in BAND_RANGES and band not in order:
+                band_listbox.insert(tk.END, band)
+        for band, var in band_vars.items():
+            var.set(1 if band in bands else 0)
+
+    def apply_profile(name):
+        if not name or name not in band_profiles:
+            return
+        profile = band_profiles[name]
+        bands = profile.get('bands', [])
+        order = profile.get('order', bands)
+        set_selected_bands(bands, order)
+        for et, var in emergency_filter_vars.items():
+            var.set(1 if et in profile.get('emergency_types', list(EMERGENCY_TYPE_KEYWORDS.keys())) else 0)
+        if 'scanner_mode' in profile:
+            preferences_data['scanner_mode'].set(1 if profile.get('scanner_mode') else 0)
+        if 'selected_source' in profile:
+            preferences_data['selected_source'].set(profile.get('selected_source', preferences_data['selected_source'].get()))
+        if 'selected_model' in profile:
+            preferences_data['selected_model'].set(profile.get('selected_model', preferences_data['selected_model'].get()))
+        if 'customization_level' in profile:
+            preferences_data['customization_level'].set(profile.get('customization_level', preferences_data['customization_level'].get()))
+        if 'frs_gmrs_unlock' in profile:
+            preferences_data['frs_gmrs_unlock'].set(1 if profile.get('frs_gmrs_unlock') else 0)
+        if 'zip_entries' in profile:
+            entries = profile.get('zip_entries', [])
+            for idx, iv in enumerate(input_vars):
+                iv.set(entries[idx] if idx < len(entries) else '')
+        profile_var.set(name)
+        try:
+            enforce_model_constraints()
+        except Exception:
+            pass
+        update_band_preview_and_summary()
+        save_last_user_state(name, [iv.get().strip() for iv in input_vars])
+
+    def save_profile():
+        name = profile_name_var.get().strip()
+        if not name:
+            messagebox.showwarning('Band Profiles', 'Enter a profile name to save.')
+            return
+        profile = {
+            'bands': [band for band in get_selected_band_order()],
+            'order': get_selected_band_order(),
+            'emergency_types': [et for et, var in emergency_filter_vars.items() if var.get()],
+            'scanner_mode': bool(preferences_data.get('scanner_mode').get() if preferences_data.get('scanner_mode') else 0),
+            'selected_source': preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference',
+            'selected_model': preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic',
+            'customization_level': preferences_data.get('customization_level').get() if preferences_data.get('customization_level') else 'Default',
+            'frs_gmrs_unlock': bool(preferences_data.get('frs_gmrs_unlock').get() if preferences_data.get('frs_gmrs_unlock') else 0),
+            'zip_entries': [iv.get().strip() for iv in input_vars],
+        }
+        band_profiles[name] = profile
+        save_band_profiles()
+        refresh_profile_list()
+        profile_var.set(name)
+        save_last_user_state(name, [iv.get().strip() for iv in input_vars])
+        messagebox.showinfo('Band Profiles', f'Profile "{name}" saved.')
+
+    def load_profile():
+        name = profile_var.get()
+        if not name:
+            messagebox.showwarning('Band Profiles', 'Choose a saved profile to load.')
+            return
+        apply_profile(name)
+        messagebox.showinfo('Band Profiles', f'Profile "{name}" loaded.')
+
+    def delete_profile():
+        name = profile_var.get()
+        if not name or name not in band_profiles:
+            messagebox.showwarning('Band Profiles', 'Choose a saved profile to delete.')
+            return
+        if messagebox.askyesno('Band Profiles', f'Delete profile "{name}"?'):
+            band_profiles.pop(name, None)
+            save_band_profiles()
+            refresh_profile_list()
+            profile_var.set('')
+            messagebox.showinfo('Band Profiles', f'Profile "{name}" deleted.')
+
+    def save_profile_as():
+        name = simpledialog.askstring('Save Profile As', 'Enter a new profile name:', parent=root)
+        if not name:
+            return
+        profile_name_var.set(name)
+        save_profile()
+
+    def compare_profiles():
+        left_name = profile_var.get()
+        right_name = profile_compare_var.get()
+        if not left_name or not right_name:
+            messagebox.showwarning('Profile Compare', 'Select two profiles to compare.')
+            return
+        if left_name == right_name:
+            messagebox.showinfo('Profile Compare', 'Choose two different profiles to compare.')
+            return
+        left = band_profiles.get(left_name, {})
+        right = band_profiles.get(right_name, {})
+        diff = []
+        for key in ['bands', 'order', 'emergency_types', 'scanner_mode', 'selected_source', 'selected_model', 'customization_level', 'frs_gmrs_unlock']:
+            left_val = left.get(key)
+            right_val = right.get(key)
+            if left_val != right_val:
+                diff.append(f'{key}: {left_name}={left_val} | {right_name}={right_val}')
+        if not diff:
+            messagebox.showinfo('Profile Compare', f'Profiles "{left_name}" and "{right_name}" are identical in saved settings.')
+            return
+        compare_text = '\n'.join(diff)
+        compare_win = tk.Toplevel(root)
+        compare_win.title('Profile Comparison')
+        compare_win.geometry('600x360')
+        compare_win.transient(root)
+        compare_win.grab_set()
+        text = tk.Text(compare_win, wrap='word', font=('Arial', 10))
+        text.pack(fill='both', expand=True, padx=10, pady=10)
+        text.insert('end', compare_text)
+        text.config(state='disabled')
+        tk.Button(compare_win, text='Close', command=compare_win.destroy, width=10).pack(pady=(0,10))
+
+    profile_frame = tk.Frame(root)
+    profile_frame.grid(row=start_row, column=0, columnspan=3, sticky='we', padx=4, pady=(4, 2))
+    profile_frame.grid_columnconfigure(1, weight=1)
+    profile_frame.grid_columnconfigure(2, weight=0)
+
+    tk.Label(profile_frame, text='Band Profile:').grid(row=0, column=0, sticky='w')
+    profile_var = tk.StringVar(value=persistent_settings.get('last_band_profile', ''))
+    profile_combo = ttk.Combobox(profile_frame, textvariable=profile_var, state='readonly', width=28)
+    profile_combo.grid(row=0, column=1, sticky='we', padx=(4, 0))
+
+    profile_actions_frame = tk.Frame(profile_frame)
+    profile_actions_frame.grid(row=0, column=2, rowspan=4, sticky='nw', padx=(12, 0))
+
+    tk.Button(profile_actions_frame, text='Load', command=load_profile, width=8).grid(row=0, column=0, padx=3, pady=2)
+    tk.Button(profile_actions_frame, text='Delete', command=delete_profile, width=8).grid(row=0, column=1, padx=3, pady=2)
+    tk.Button(profile_actions_frame, text='Compare', command=compare_profiles, width=10).grid(row=0, column=2, padx=3, pady=2)
+
+    tk.Label(profile_frame, text='Profile name:').grid(row=1, column=0, sticky='w', pady=(6, 0))
+    profile_name_var = tk.StringVar()
+    tk.Entry(profile_frame, textvariable=profile_name_var, width=30).grid(row=1, column=1, sticky='we', padx=(4, 0), pady=(6, 0))
+    tk.Button(profile_actions_frame, text='Save', command=save_profile, width=8).grid(row=1, column=0, padx=3, pady=2)
+    tk.Button(profile_actions_frame, text='Save As...', command=save_profile_as, width=10).grid(row=1, column=1, padx=3, pady=2)
+
+    tk.Label(profile_frame, text='Compare to:').grid(row=2, column=0, sticky='w', pady=(6, 0))
+    profile_compare_var = tk.StringVar(value='')
+    profile_compare_combo = ttk.Combobox(profile_frame, textvariable=profile_compare_var, state='readonly', width=26)
+    profile_compare_combo.grid(row=2, column=1, sticky='we', padx=(4, 0), pady=(6, 0))
+    tk.Button(profile_actions_frame, text='Emergency', command=lambda: apply_profile('Emergency Comms'), width=11).grid(row=2, column=0, padx=3, pady=2)
+    tk.Button(profile_actions_frame, text='Traveler', command=lambda: apply_profile('Traveler'), width=10).grid(row=2, column=1, padx=3, pady=2)
+    tk.Button(profile_actions_frame, text='HamScan', command=lambda: apply_profile('HamScan'), width=10).grid(row=2, column=2, padx=3, pady=2)
+
+    band_tabs = ttk.Notebook(root)
+    band_tabs.grid(row=start_row+1, column=0, sticky='nw', padx=8, pady=4)
+
+    page_frames = {}
+    for title, bands in PAGE_BAND_GROUPS:
+        frame = ttk.Frame(band_tabs)
+        band_tabs.add(frame, text=title)
+        page_frames[title] = frame
+
     band_vars = {}
-    band_listbox = tk.Listbox(root, height=len(BAND_RANGES))
-    band_listbox.grid(row=start_row+1, column=1, rowspan=len(BAND_RANGES), sticky='n', padx=8, pady=4)
-    ToolTip(band_listbox, 'Use Up/Down buttons to reorder bands\nTop band appears first in export')
+    emergency_filter_vars = {}
+    band_listbox = tk.Listbox(root, height=6)
+    band_listbox.grid(row=start_row+1, column=1, rowspan=6, sticky='n', padx=8, pady=4)
+    ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
 
+    drag_data = {'item': None, 'index': None}
+    def on_band_drag_start(event):
+        idx = band_listbox.nearest(event.y)
+        if idx >= 0 and idx < band_listbox.size():
+            drag_data['index'] = idx
+            drag_data['item'] = band_listbox.get(idx)
+    def on_band_drag_motion(event):
+        if drag_data['item'] is None:
+            return
+        idx = band_listbox.nearest(event.y)
+        if idx >= 0 and idx < band_listbox.size() and idx != drag_data['index']:
+            band_listbox.delete(drag_data['index'])
+            band_listbox.insert(idx, drag_data['item'])
+            band_listbox.selection_clear(0, 'end')
+            band_listbox.selection_set(idx)
+            drag_data['index'] = idx
+    def on_band_drag_release(event):
+        if drag_data['item'] is not None:
+            update_band_preview_and_summary()
+            drag_data['item'] = None
+            drag_data['index'] = None
+    band_listbox.bind('<ButtonPress-1>', on_band_drag_start)
+    band_listbox.bind('<B1-Motion>', on_band_drag_motion)
+    band_listbox.bind('<ButtonRelease-1>', on_band_drag_release)
+
+    band_search_var = tk.StringVar()
+    scope_search_var = tk.StringVar()
+    scope_only_var = tk.IntVar(value=0)
+    def filter_band_checkbuttons(*args):
+        query = band_search_var.get().strip().lower()
+        for band, cb in band_checkbuttons.items():
+            if not query or query in band.lower():
+                try:
+                    cb.grid()
+                except Exception:
+                    pass
+            else:
+                try:
+                    cb.grid_remove()
+                except Exception:
+                    pass
+    band_search_var.trace_add('write', filter_band_checkbuttons)
+
+    def get_scope_keywords():
+        return [tok.strip().lower() for tok in re.split(r'[\n,]+', scope_search_var.get() or '') if tok.strip()]
+
+    def move_up():
+        sel = band_listbox.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        if i == 0:
+            return
+        txt = band_listbox.get(i)
+        band_listbox.delete(i)
+        band_listbox.insert(i-1, txt)
+        band_listbox.selection_set(i-1)
+        update_band_preview_and_summary()
+
+    def move_down():
+        sel = band_listbox.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        if i == band_listbox.size()-1:
+            return
+        txt = band_listbox.get(i)
+        band_listbox.delete(i)
+        band_listbox.insert(i+1, txt)
+        band_listbox.selection_set(i+1)
+        update_band_preview_and_summary()
+
+    search_frame = tk.Frame(root)
+    search_frame.grid(row=start_row+2, column=0, sticky='w', padx=4, pady=(2, 2))
+    tk.Label(search_frame, text='Filter bands:').grid(row=0, column=0, sticky='w')
+    search_entry = tk.Entry(search_frame, textvariable=band_search_var, width=18)
+    search_entry.grid(row=0, column=1, sticky='w', padx=(4,0))
+    ToolTip(search_entry, 'Filter the available band checkboxes by name')
+
+    tk.Label(search_frame, text='Locality:').grid(row=1, column=0, sticky='w', pady=(4,0))
+    scope_entry = tk.Entry(search_frame, textvariable=scope_search_var, width=18)
+    scope_entry.grid(row=1, column=1, sticky='w', padx=(4,0), pady=(4,0))
+    ToolTip(scope_entry, 'Enter preferred locality keywords to rank nearby channels higher. Examples: Evanston, Skokie, Rogers Park')
+
+    scope_only_cb = tk.Checkbutton(search_frame, text='Local only', variable=scope_only_var,
+                                   command=lambda: update_band_preview_and_summary())
+    scope_only_cb.grid(row=2, column=0, columnspan=2, sticky='w', pady=(4,0))
+    ToolTip(scope_only_cb, 'When enabled, only rows matching the locality keywords will be returned')
+
+    control_frame = tk.Frame(search_frame)
+    control_frame.grid(row=0, column=2, sticky='w', padx=(8, 0))
+    up_btn = tk.Button(control_frame, text='Up', command=move_up, width=4)
+    up_btn.grid(row=0, column=0, padx=2)
+    ToolTip(up_btn, 'Move selected band up in priority')
+    down_btn = tk.Button(control_frame, text='Down', command=move_down, width=4)
+    down_btn.grid(row=0, column=1, padx=2)
+    ToolTip(down_btn, 'Move selected band down in priority')
+
+    frs_unlock_var = preferences_data.get('frs_gmrs_unlock') if preferences_data.get('frs_gmrs_unlock') else tk.IntVar(value=0)
+    frs_unlock_cb = tk.Checkbutton(search_frame, text='Ensure FRS/GMRS unlocked & enable bandplan', variable=frs_unlock_var)
+    frs_unlock_cb.grid(row=1, column=0, columnspan=3, sticky='w', pady=(8, 0))
+    ToolTip(frs_unlock_cb, 'Mark FRS/GMRS fixed channels as unlocked for programming (requires firmware unlock on your radio)')
+
+    band_preview_frame = tk.LabelFrame(root, text='Band Plan Preview', padx=4, pady=4)
+    band_preview_frame.grid(row=start_row+1, column=2, columnspan=2, rowspan=1, sticky='nwe', padx=4, pady=2)
+    band_preview_label = tk.Label(band_preview_frame, text='', justify='left', anchor='nw', font=('Arial', 9))
+    band_preview_label.pack(fill='both', expand=True)
+
+    export_summary_frame = tk.LabelFrame(root, text='Export Summary', padx=4, pady=4)
+    export_summary_frame.grid(row=start_row+2, column=2, columnspan=2, rowspan=2, sticky='nwe', padx=4, pady=2)
+    export_summary_label = tk.Label(export_summary_frame, text='', justify='left', anchor='nw', font=('Arial', 9))
+    export_summary_label.pack(fill='both', expand=True)
+
+    def update_band_preview_and_summary():
+        bands = get_selected_band_order()
+        if bands:
+            lines = [f'Selected bands ({len(bands)}):', ', '.join(bands), '']
+        else:
+            lines = ['Selected bands: None', '']
+        if 'NOAA' in bands:
+            lines.append(f'NOAA weather channels: {len(NOAA_FREQS)}')
+        if 'MURS' in bands:
+            lines.append(f'MURS channels: {len(MURS_FREQS)}')
+        if 'FRS/GMRS' in bands:
+            lines.append(f'FRS/GMRS channels: {len(FRS_GMRS_FREQS)}')
+        if 'Emergency' in bands:
+            lines.append('Emergency: variable repeater dispatch channels')
+            emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+            if emergency_types:
+                lines.append(f'Emergency types: {", ".join(emergency_types)}')
+                term_lines = []
+                for et in emergency_types:
+                    term_lines.append(f'{et} [{", ".join(EMERGENCY_TYPE_KEYWORDS.get(et, []))}]')
+                lines.append('Matching terms: ' + '; '.join(term_lines))
+            else:
+                lines.append('Emergency filter active: no emergency types selected')
+        if any(b in ('2m','70cm','1.25m') for b in bands):
+            lines.append('Repeater bands: area-specific channels from RadioReference')
+        lines.append('')
+        lines.append(f'Profile: {profile_var.get() or "None"}')
+        lines.append(f'Scanner mode: {"On" if preferences_data.get("scanner_mode").get() else "Off"}')
+        band_preview_label.config(text='\n'.join(lines))
+
+        summary_lines = [f'Preview Mode: {"CSV with skip flags" if preferences_data.get("preview_mode").get() else "Summary only"}', '']
+        selected = get_selected_band_order()
+        summary_lines.append(f'Ordered selection: {" > ".join(selected) if selected else "None"}')
+        emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+        if emergency_types:
+            summary_lines.append(f'Selected emergency types: {", ".join(emergency_types)}')
+        scope_keywords = get_scope_keywords()
+        if scope_only_var.get():
+            summary_lines.append('Local only: On')
+        if scope_keywords:
+            summary_lines.append(f'Locality keywords: {", ".join(scope_keywords)}')
+        elif scope_only_var.get():
+            summary_lines.append('Local only enabled; no locality keywords set')
+        export_summary_label.config(text='\n'.join(summary_lines))
+
+    def refresh_ui_state(*args):
+        update_band_preview_and_summary()
+    band_search_var.trace_add('write', lambda *_: refresh_ui_state())
+    scope_search_var.trace_add('write', lambda *_: refresh_ui_state())
+    scope_only_var.trace_add('write', lambda *_: refresh_ui_state())
     def toggle_band(band):
         if band_vars[band].get():
-            band_listbox.insert(tk.END, band)
+            if band not in band_listbox.get(0, tk.END):
+                band_listbox.insert(tk.END, band)
         else:
-            # remove all occurrences
             for i in range(band_listbox.size()-1, -1, -1):
                 if band_listbox.get(i) == band:
                     band_listbox.delete(i)
+        update_band_preview_and_summary()
 
-    for j, band in enumerate(BAND_RANGES.keys()):
-        # default to select both common amateur bands 70cm and 2m
-        v = tk.IntVar(value=1 if band in ('70cm', '2m') else 0)
-        band_vars[band] = v
-        cb = tk.Checkbutton(root, text=band, variable=v, command=lambda b=band: toggle_band(b))
-        cb.grid(row=start_row+1+j, column=0, sticky='w', padx=8, pady=6)
-        
-        # Add band-specific tooltips
-        if band == '70cm':
-            ToolTip(cb, '70cm band (420-450 MHz)\nUltra High Frequency - local area coverage')
-        elif band == '2m':
-            ToolTip(cb, '2m band (144-148 MHz)\nVery High Frequency - wider area coverage')
-        elif band == 'NOAA':
-            ToolTip(cb, 'NOAA Weather Alerts (162.4-162.55 MHz)\nPublic weather radio broadcasts')
-        elif band == 'MURS':
-            ToolTip(cb, 'MURS (151.82-154.6 MHz)\nMulti-Use Radio Service - license-free')
-        elif band == 'FRS/GMRS':
-            ToolTip(cb, 'FRS/GMRS (462-467 MHz)\nFamily Radio Service / General Mobile Radio Service')
-        elif band == 'Emergency':
-            ToolTip(cb, 'Emergency / Public Safety dispatch frequencies\nSearches county/zip pages for Police/Fire/EMS analog channels')
-        
-        if v.get():
-            band_listbox.insert(tk.END, band)
+    for page_title, bands in PAGE_BAND_GROUPS:
+        frame = page_frames[page_title]
+        for j, band in enumerate(bands):
+            v = tk.IntVar(value=1 if band in ('70cm', '2m') else 0)
+            band_vars[band] = v
+            cb = tk.Checkbutton(frame, text=band, variable=v, command=lambda b=band: toggle_band(b))
+            cb.grid(row=j, column=0, sticky='w', padx=10, pady=6)
+            band_checkbuttons[band] = cb
+            if band == '70cm':
+                ToolTip(cb, '70cm band (420-450 MHz)\nUltra High Frequency - local area coverage')
+            elif band == '2m':
+                ToolTip(cb, '2m band (144-148 MHz)\nVery High Frequency - wider area coverage')
+            elif band == 'NOAA':
+                ToolTip(cb, 'NOAA Weather Alerts (162.4-162.55 MHz)\nPublic weather radio broadcasts')
+            elif band == 'MURS':
+                ToolTip(cb, 'MURS (151.82-154.6 MHz)\nMulti-Use Radio Service - license-free')
+            elif band == 'FRS/GMRS':
+                ToolTip(cb, 'FRS/GMRS (462-467 MHz)\nFamily Radio Service / General Mobile Radio Service')
+            elif band == 'Emergency':
+                ToolTip(cb, 'Emergency / Public Safety dispatch frequencies\nSearches county/zip pages for Police/Fire/EMS/citywide analog channels')
+            if v.get():
+                band_listbox.insert(tk.END, band)
 
-    # reorder buttons
+    # Emergency subtype filters appear on the Emergency tab
+    emergency_frame = page_frames['Emergency']
+    tk.Label(emergency_frame, text='Emergency Types:', font=('Arial', 10, 'bold')).grid(row=1, column=0, sticky='w', padx=10, pady=(10, 4))
+    for i, et in enumerate(EMERGENCY_TYPE_KEYWORDS.keys()):
+        ve = tk.IntVar(value=1)
+        emergency_filter_vars[et] = ve
+        cb = tk.Checkbutton(emergency_frame, text=et, variable=ve, command=lambda: refresh_ui_state())
+        cb.grid(row=2 + i//2, column=i%2, sticky='w', padx=12, pady=4)
+
+    refresh_profile_list()
+    last_profile_name = persistent_settings.get('last_band_profile', '')
+    if last_profile_name and last_profile_name in band_profiles:
+        apply_profile(last_profile_name)
+        profile_var.set(last_profile_name)
+    update_band_preview_and_summary()
+
     def move_up():
         sel = band_listbox.curselection()
         if not sel: return
@@ -2421,30 +3212,7 @@ def launch_gui_and_run(default_pages, output_path):
         band_listbox.delete(i)
         band_listbox.insert(i-1, txt)
         band_listbox.selection_set(i-1)
-
-    def move_down():
-        sel = band_listbox.curselection()
-        if not sel: return
-        i = sel[0]
-        if i == band_listbox.size()-1: return
-        txt = band_listbox.get(i)
-        band_listbox.delete(i)
-        band_listbox.insert(i+1, txt)
-        band_listbox.selection_set(i+1)
-
-    up_btn = tk.Button(root, text='Up', command=move_up)
-    up_btn.grid(row=start_row+1+len(BAND_RANGES), column=1, sticky='w', padx=8)
-    ToolTip(up_btn, 'Move selected band up in priority')
-    
-    down_btn = tk.Button(root, text='Down', command=move_down)
-    down_btn.grid(row=start_row+1+len(BAND_RANGES), column=1, sticky='e', padx=8)
-    ToolTip(down_btn, 'Move selected band down in priority')
-
-    # Checkbox to ensure FRS/GMRS frequencies are treated as unlocked and enable bandplan
-    frs_unlock_var = preferences_data.get('frs_gmrs_unlock') if preferences_data.get('frs_gmrs_unlock') else tk.IntVar(value=0)
-    frs_unlock_cb = tk.Checkbutton(root, text='Ensure FRS/GMRS unlocked & enable bandplan', variable=frs_unlock_var)
-    frs_unlock_cb.grid(row=start_row+1+len(BAND_RANGES)+1, column=0, sticky='w', padx=8, pady=4)
-    ToolTip(frs_unlock_cb, 'Mark FRS/GMRS fixed channels as unlocked for programming (requires firmware unlock on your radio)')
+        update_band_preview_and_summary()
 
     # Export button (centered at bottom)
     def on_export():
@@ -2480,23 +3248,45 @@ def launch_gui_and_run(default_pages, output_path):
         # Require at least one ZIP code and one band selected
         selected_source = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
         scanner_mode_enabled = bool(preferences_data.get('scanner_mode').get() if preferences_data.get('scanner_mode') else 0)
-        zip_present = any(re.match(r'^\d{5}$', iv.get().strip() or '') for iv in input_vars)
-        band_selected = any(v.get() for v in band_vars.values())
+        selected_bands = [band_listbox.get(i) for i in range(band_listbox.size())]
+        zip_present = False
+        valid_location_count = 0
+        for iv in input_vars:
+            text = iv.get().strip()
+            if not text:
+                continue
+            for tok in parse_input_tokens(text):
+                if canonical_band_name(tok):
+                    continue
+                if tok.startswith('http://') or tok.startswith('https://'):
+                    valid_location_count += 1
+                    continue
+                if re.fullmatch(r'^\d{5}$', tok):
+                    zip_present = True
+                    valid_location_count += 1
+                    continue
         if selected_source == 'Radio Browser':
             if not zip_present:
                 messagebox.showerror('Error', 'Radio Browser source requires at least one valid ZIP code')
                 cleanup_export()
                 return
         else:
-            if not zip_present or not band_selected:
+            if not zip_present or not any(v.get() for v in band_vars.values()):
                 messagebox.showerror('Error', 'Must have at least one ZIP code and at least one band selected')
                 cleanup_export()
                 return
 
         if scanner_mode_enabled and selected_source != 'Radio Browser':
-            # Scanner mode keeps NOAA/WX channels in the export, but will mark them skipped in the CSV.
-            if band_vars.get('NOAA') and band_vars['NOAA'].get():
-                messagebox.showinfo('Scanner mode', 'Scanner mode is enabled: NOAA/WX channels will be exported with the Scan/Skip flag set.')
+            message = 'Scanner mode is enabled: NOAA channels will be exported as skipped.'
+            if profile_var.get() == 'Traveler':
+                message += ' Traveler keeps HAM and Emergency channels active while NOAA is skipped.'
+            elif profile_var.get() == 'HamScan':
+                message += ' HamScan keeps HAM channels active and skips Emergency and NOAA channels.'
+            elif profile_var.get() == 'Emergency Comms':
+                message += ' Emergency Comms keeps only Emergency channels active and skips HAM and NOAA.'
+            else:
+                message += ' On other profiles, only NOAA is skipped by default.'
+            messagebox.showinfo('Scanner mode', message)
         if selected_source == 'Radio Browser':
             rows_rb = []
             unique_zips = []
@@ -2552,45 +3342,58 @@ def launch_gui_and_run(default_pages, output_path):
                 messagebox.showerror('Error', f'Failed writing Radio Browser CSV: {e}')
             return
 
+        input_band_tokens = []
         for idx, iv in enumerate(input_vars):
-            u = iv.get().strip()
-            if not u:
+            raw_value = iv.get().strip()
+            if not raw_value:
                 continue
-            # if full URL provided, use it
-            if u.startswith('http://') or u.startswith('https://'):
-                pages[u] = u
+            tokens = parse_input_tokens(raw_value)
+            band_tokens = [canonical_band_name(tok) for tok in tokens if canonical_band_name(tok)]
+            for band in band_tokens:
+                if band and band not in input_band_tokens:
+                    input_band_tokens.append(band)
+            for tok in tokens:
+                if tok.startswith('http://') or tok.startswith('https://'):
+                    pages[tok] = tok
+                    continue
+                if re.fullmatch(r'^\d{5}$', tok):
+                    try:
+                        pr = http_get(f'http://api.zippopotam.us/us/{tok}', timeout=6)
+                        if pr.status_code == 200:
+                            pj = pr.json()
+                            places = pj.get('places', [])
+                            if places:
+                                lat = places[0].get('latitude')
+                                lon = places[0].get('longitude')
+                                if lat and lon:
+                                    nom = http_get(
+                                        f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
+                                        headers={'User-Agent': 'chirp-scraper'},
+                                        timeout=8,
+                                    ).json()
+                                    addr = nom.get('address', {})
+                                    county = addr.get('county')
+                                    state = addr.get('state')
+                                    if county and state:
+                                        key = f"{county}, {state}".lower()
+                                        ctid = rr_index.get(key)
+                                        if ctid:
+                                            pages[f"{county}, {state}"] = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
+                                            continue
+                    except Exception:
+                        pass
+                # unsupported token is ignored
                 continue
-            # if ZIP, try to map to ctid via rr_index
-            if re.match(r'^\d{5}$', u):
-                try:
-                    pr = http_get(f'http://api.zippopotam.us/us/{u}', timeout=6)
-                    if pr.status_code == 200:
-                        pj = pr.json()
-                        places = pj.get('places', [])
-                        if places:
-                            lat = places[0].get('latitude')
-                            lon = places[0].get('longitude')
-                            if lat and lon:
-                                nom = http_get(
-                                    f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
-                                    headers={'User-Agent': 'chirp-scraper'},
-                                    timeout=8,
-                                ).json()
-                                addr = nom.get('address', {})
-                                county = addr.get('county')
-                                state = addr.get('state')
-                                if county and state:
-                                    key = f"{county}, {state}".lower()
-                                    ctid = rr_index.get(key)
-                                    if ctid:
-                                        pages[f"{county}, {state}"] = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
-                                        continue
-                except Exception:
-                    pass
-            # fallback: ignore
-            continue
+        if input_band_tokens:
+            current_bands = get_selected_band_order()
+            for band in input_band_tokens:
+                if band not in current_bands:
+                    current_bands.append(band)
+            set_selected_bands(current_bands, order=current_bands)
         if not pages:
             pages = {k: v for k, v in default_pages.items()}
+
+        save_last_user_state(profile_var.get(), [iv.get().strip() for iv in input_vars])
 
         # selected bands in order
         sel_bands = [band_listbox.get(i) for i in range(band_listbox.size())]
@@ -2620,22 +3423,94 @@ def launch_gui_and_run(default_pages, output_path):
                 page_rows = list(fetch_freqs_for_page(u))
                 if not page_rows:
                     fetch_errors.append((c, u, 'No repeater rows returned'))
+
+                # If the user wants Emergency rows, also fetch the paired emergency
+                # page for ZIP/CTID URLs already pointing at a ham page. Likewise,
+                # if ham/regular bands are selected and the input page is an
+                # emergency page, fetch the paired ham page.
+                if re.search(r'/(?:ctid|zip)/', u, re.I):
+                    if 'Emergency' in sel_bands and re.search(r'/ham/?$', u, re.I):
+                        emergency_url = get_rr_counterpart_page(u, 'emergency')
+                        if emergency_url != u:
+                            extra_rows = list(fetch_freqs_for_page(emergency_url))
+                            if extra_rows:
+                                page_rows.extend(extra_rows)
+                            else:
+                                fetch_errors.append((c, emergency_url, 'No repeater rows returned from emergency page'))
+                    ham_bands = {'70cm', '1.25m', '2m'}
+                    if any(b in sel_bands for b in ham_bands) and re.search(r'/emergency/?$', u, re.I):
+                        ham_url = get_rr_counterpart_page(u, 'ham')
+                        if ham_url != u:
+                            extra_rows = list(fetch_freqs_for_page(ham_url))
+                            if extra_rows:
+                                page_rows.extend(extra_rows)
+                            else:
+                                fetch_errors.append((c, ham_url, 'No repeater rows returned from ham page'))
                 for tup in page_rows:
-                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint])
-                    if len(tup) >= 5:
+                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint[,row_text]])
+                    if len(tup) >= 6:
+                        name, f, tone, duplex_hint, offset_hint, row_text = tup[0], tup[1], tup[2], tup[3], tup[4], tup[5]
+                    elif len(tup) == 5:
                         name, f, tone, duplex_hint, offset_hint = tup[0], tup[1], tup[2], tup[3], tup[4]
+                        row_text = tup[0]
                     else:
                         name, f, tone = tup[0], tup[1], tup[2]
                         duplex_hint, offset_hint = (None, None)
-                    # determine which band this frequency belongs to (first matching selected band)
+                        row_text = tup[0]
+                    # determine which band this frequency belongs to
                     band_label = None
-                    # Special-case: Emergency matching by keyword or common public-safety ranges
                     try:
                         if 'Emergency' in sel_bands:
-                            lname = (name or '').lower()
+                            lname_check = (row_text or name or '').lower()
+                            selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+                            emergency_keywords = [
+                                'dispatch', 'police', 'pd', 'sheriff', 'law', 'tac', 'tactical',
+                                'fire', 'fd', 'fireground', 'fire ground', 'fire dispatch', 'fire-tac',
+                                'ems', 'ems-tac', 'ambulance', 'medical', 'emt',
+                                'emergency', 'public safety',
+                                'citywide', 'city-wide', 'city wide', 'c/w', 'cw',
+                                'mutual aid', 'operations', 'rescue', 'command', 'engine',
+                            ]
+                            if selected_emergency_types and any(kw in lname_check for kw in emergency_keywords):
+                                type_tokens = []
+                                for et in selected_emergency_types:
+                                    type_tokens.extend(EMERGENCY_TYPE_KEYWORDS.get(et, []))
+                                if any(token in lname_check for token in type_tokens):
+                                    band_label = 'Emergency'
+                            elif selected_emergency_types:
+                                for lo, hi in BAND_RANGES.get('Emergency', []):
+                                    try:
+                                        if lo <= float(f) <= hi:
+                                            band_label = 'Emergency'
+                                            break
+                                    except Exception:
+                                        continue
+
+                        if not band_label:
+                            # Prefer explicit band matches (2m/70cm/NOAA/MURS/FRS-GMRS) over Emergency fallback.
+                            for band in sel_bands:
+                                if band == 'Emergency':
+                                    continue
+                                ranges = BAND_RANGES.get(band, [])
+                                for lo, hi in ranges:
+                                    try:
+                                        if lo <= float(f) <= hi:
+                                            band_label = band
+                                            break
+                                    except Exception:
+                                        continue
+                                if band_label:
+                                    break
+                        # Emergency should only be used when no exact selected band match exists.
+                        if not band_label and 'Emergency' in sel_bands:
+                            lname = (row_text or name or '').lower()
                             detected_protocol = None
                             # base keywords
-                            emergency_keywords = ['dispatch', 'police', 'fire', 'sheriff', 'ems', 'ambulance', 'emergency', 'public safety']
+                            emergency_keywords = [
+                                'dispatch', 'police', 'fire', 'fire dept', 'fire department',
+                                'sheriff', 'ems', 'ambulance', 'emergency', 'public safety',
+                                'citywide', 'city-wide', 'city wide',
+                            ]
                             # digital protocol tokens
                             p25_tokens = ['p25', 'project 25']
                             edacs_tokens = ['edacs']
@@ -2658,47 +3533,42 @@ def launch_gui_and_run(default_pages, output_path):
                                     except Exception:
                                         continue
 
+                            selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+                            if not selected_emergency_types:
+                                match = False
+                            elif match:
+                                type_tokens = []
+                                for et in selected_emergency_types:
+                                    type_tokens.extend(EMERGENCY_TYPE_KEYWORDS.get(et, []))
+                                if not any(token in lname for token in type_tokens):
+                                    match = False
+
                             # Advanced: tighten matching and allow P25/EDACS detection
                             if match and cust_level in ('Advanced', 'High Quality'):
-                                # detect explicit protocol tokens
                                 if any(t in lname for t in p25_tokens):
                                     detected_protocol = 'P25'
                                 elif any(t in lname for t in edacs_tokens):
                                     detected_protocol = 'EDACS'
-                                # if other digital types are present and model does not support general digital, skip
                                 if any(t in lname for t in other_digital) and not model_obj.get('supports_digital_mode'):
                                     match = False
 
-                            # Final acceptance: if protocol detected, ensure model supports it (only in advanced)
                             if detected_protocol:
                                 if detected_protocol == 'P25' and not model_obj.get('supports_p25'):
                                     match = False
                                 if detected_protocol == 'EDACS' and not model_obj.get('supports_edacs'):
                                     match = False
 
-                            # If matched and not rejected by digital incompatibility, mark Emergency
                             if match:
-                                # if we detected a protocol, attach it to the tuple via a small wrapper by setting band_label
                                 band_label = 'Emergency'
-                                # store detected protocol into a temporary variable attached to name for later propagation
                                 if detected_protocol:
                                     name = f"{name} [{detected_protocol}]"
                     except Exception:
                         pass
-                    for band in sel_bands:
-                        ranges = BAND_RANGES.get(band, [])
-                        for lo, hi in ranges:
-                            try:
-                                if lo <= float(f) <= hi:
-                                    band_label = band
-                                    break
-                            except Exception:
-                                continue
-                        if band_label:
-                            break
                     if not band_label:
                         continue
-                    rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint})
+                    if band_label == 'Emergency' and not is_analog_emergency_channel(name, row_text, c):
+                        continue
+                    rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint, 'RawText': row_text})
             except Exception as exc:
                 fetch_errors.append((c, u, str(exc)))
 
@@ -2739,9 +3609,48 @@ def launch_gui_and_run(default_pages, output_path):
                 name, f, duplex, tone, raw = entry
                 rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
 
-        # sort rows by band order then frequency
+        # sort rows by band order then numeric frequency
+        def numeric_frequency(value):
+            try:
+                return float(value)
+            except Exception:
+                return 0.0
+
         band_order = {b: i for i, b in enumerate(sel_bands)}
-        rows.sort(key=lambda r: (band_order.get(r.get('Band'), 999), r.get('Frequency', 0)))
+        scope_keywords = get_scope_keywords()
+        def locality_priority(row):
+            if not scope_keywords:
+                return 0
+            text = ' '.join([str(row.get('Name', '')), str(row.get('Comment', ''))]).lower()
+            score = sum(1 for tok in scope_keywords if tok in text)
+            return -score
+
+        if scope_only_var.get() and scope_keywords:
+            rows = [r for r in rows if locality_priority(r) < 0]
+
+        selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+        # preserve all Emergency channels when Emergency band is selected
+        # rows = limit_emergency_channels(rows, selected_emergency_types, locality_priority, numeric_frequency)
+
+        rows.sort(key=lambda r: (band_order.get(r.get('Band'), 999), locality_priority(r), numeric_frequency(r.get('Frequency', 0))))
+
+        # remove duplicate rows from merged sources (Emergency/NOAA/repeaters) before export
+        deduped = []
+        seen_keys = set()
+        for r in rows:
+            key = (
+                r.get('Band', ''),
+                str(r.get('Frequency', '')).strip(),
+                (r.get('Name') or '').strip().lower(),
+                (r.get('Tone') or '').strip(),
+                (r.get('Duplex') or '').strip(),
+                (r.get('Offset') or '').strip(),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped.append(r)
+        rows = deduped
 
         # build CHIRP-like CSV with proper repeater handling (duplex/offset/tone)
         def compute_offset_local(freq):
@@ -2756,11 +3665,11 @@ def launch_gui_and_run(default_pages, output_path):
             return ''
 
         def parse_tone_local(tone_text):
-            if not tone_text:
+            if not tone_text or not str(tone_text).strip():
                 return ('', '', '')
-            t = tone_text.strip()
+            t = str(tone_text).strip()
             if t.upper() == 'CSQ':
-                return ('CSQ', '', '')
+                return ('', '', '')
             m = re.search(r"([0-9]+\.?[0-9]*)", t)
             if m:
                 try:
@@ -2772,7 +3681,7 @@ def launch_gui_and_run(default_pages, output_path):
                     return ('', '', '')
                 val = f"{valf:.1f}"
                 return ('Tone', val, val)
-            return (t, '', '')
+            return ('', '', '')
 
         # Determine selected model object for compatibility filtering
         sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
@@ -2790,9 +3699,9 @@ def launch_gui_and_run(default_pages, output_path):
             tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
             dtcs = '023' if rTone else ''
             dtcs_pol = 'NN' if rTone else ''
-            # Remove scanned entries that lack an rTone value. Preserve fixed band lists (NOAA/MURS/FRS_GMRS).
-            # Treat 'Emergency' like other scanned bands (require tone/validation similar to 2m/70cm).
-            if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS'):
+            # Preserve amateur and emergency frequencies even when a tone is not present.
+            # Fixed band lists still remain exempt from the tone requirement.
+            if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS', '2m', '70cm', 'Emergency'):
                 continue
             # For Emergency entries, allow P25/EDACS when supported and when in Advanced quality;
             # allow analog emergency channels even without tone. Filter other digital types unless model supports them.
@@ -2818,9 +3727,15 @@ def launch_gui_and_run(default_pages, output_path):
                         if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
                             continue
             skip_value = ''
-            if scanner_mode_enabled and band == 'NOAA':
-                # CHIRP generic CSV accepts '', 'S', or 'P' for the Skip field.
-                # Use 'S' to mark scanner-mode NOAA/WX channels as skipped.
+            if band == 'NOAA':
+                skip_value = 'S'
+            elif scanner_mode_enabled and profile_var.get() == 'Traveler':
+                # Traveler scans HAM and Emergency channels, so only NOAA remains skipped.
+                skip_value = 'S'
+            elif scanner_mode_enabled and profile_var.get() == 'Emergency Comms' and band in ('70cm', '1.25m', '2m'):
+                # In Emergency profile, HAM bands are skipped so only Emergency channels scan.
+                skip_value = 'S'
+            elif scanner_mode_enabled and profile_var.get() == 'HamScan' and band == 'Emergency':
                 skip_value = 'S'
             df_rows.append({
                 'Name': name,
@@ -2871,7 +3786,7 @@ def launch_gui_and_run(default_pages, output_path):
                 if c not in outdf.columns:
                     outdf[c] = ''
             outdf = outdf[cols]
-            outdf.index = range(1, len(outdf)+1)
+            outdf.index = [f"{i:03d}" for i in range(2, len(outdf)+2)]
             outdf.index.name = 'Location'
             
             update_progress(f'Preparing {len(outdf)} rows...')
@@ -2949,6 +3864,8 @@ def launch_gui_and_run(default_pages, output_path):
                         progress_bar['value'] = i
                         update_progress(f'Writing {i}/{total} rows...')
                 progress_window.destroy()
+                exported_data['last_export_path'] = save_path
+                update_status_bar(exported_rows=total, profile_name=profile_var.get(), last_path=save_path)
                 messagebox.showinfo('Done', f'Wrote {total} rows to {save_path}')
             except Exception as e:
                 progress_window.destroy()
@@ -2974,6 +3891,555 @@ def launch_gui_and_run(default_pages, output_path):
                 export_btn.config(state='normal')
             except Exception:
                 pass
+
+    def build_export_dataframe(show_warnings=True):
+        selected_source = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
+        scanner_mode_enabled = bool(preferences_data.get('scanner_mode').get() if preferences_data.get('scanner_mode') else 0)
+        zip_present = any(re.match(r'^\d{5}$', iv.get().strip() or '') for iv in input_vars)
+        band_selected = any(v.get() for v in band_vars.values())
+
+        if selected_source == 'Radio Browser' and not zip_present:
+            if show_warnings:
+                messagebox.showerror('Error', 'Radio Browser source requires at least one valid ZIP code')
+            return None, None
+        if selected_source != 'Radio Browser' and (not zip_present or not band_selected):
+            if show_warnings:
+                messagebox.showerror('Error', 'Must have at least one ZIP code and at least one band selected')
+            return None, None
+
+        pages = {}
+        input_band_tokens = []
+        if selected_source == 'Radio Browser':
+            rows_rb = []
+            unique_zips = []
+            for idx, iv in enumerate(input_vars):
+                u = iv.get().strip()
+                if not re.match(r'^\d{5}$', u):
+                    continue
+                if u not in unique_zips:
+                    unique_zips.append(u)
+                stations = get_radio_browser_broadcast_for_zip(u, limit=50)
+                if not stations:
+                    continue
+                for station in stations:
+                    rows_rb.append({
+                        'ZIP': u,
+                        'Name': station.get('name', ''),
+                        'URL': station.get('url', ''),
+                        'ResolvedURL': station.get('url_resolved', ''),
+                        'Tags': station.get('tags', ''),
+                        'Country': station.get('country', ''),
+                        'State': station.get('state', ''),
+                        'Codec': station.get('codec', ''),
+                        'Bitrate': station.get('bitrate', ''),
+                        'Language': station.get('language', ''),
+                        'LastCheck': station.get('lastchecktime', ''),
+                        'Latitude': station.get('geo_lat', ''),
+                        'Longitude': station.get('geo_long', ''),
+                    })
+            if not rows_rb:
+                if show_warnings:
+                    messagebox.showerror('Error', 'No Radio Browser station results were found for the selected ZIPs.')
+                return None, None
+            try:
+                import pandas as pd
+                outdf = pd.DataFrame(rows_rb)
+                exported_data['dataframe'] = outdf
+                exported_data['row_count'] = len(outdf)
+                exported_data['pages'] = {}
+                return outdf, {}
+            except Exception as exc:
+                if show_warnings:
+                    messagebox.showerror('Error', f'Failed building Radio Browser preview: {exc}')
+                return None, None
+
+        input_band_tokens = []
+        for idx, iv in enumerate(input_vars):
+            raw_value = iv.get().strip()
+            if not raw_value:
+                continue
+            tokens = parse_input_tokens(raw_value)
+            band_tokens = [canonical_band_name(tok) for tok in tokens if canonical_band_name(tok)]
+            for band in band_tokens:
+                if band and band not in input_band_tokens:
+                    input_band_tokens.append(band)
+            for tok in tokens:
+                if tok.startswith('http://') or tok.startswith('https://'):
+                    pages[tok] = tok
+                    continue
+                if re.fullmatch(r'^\d{5}$', tok):
+                    try:
+                        pr = http_get(f'http://api.zippopotam.us/us/{tok}', timeout=6)
+                        if pr.status_code == 200:
+                            pj = pr.json()
+                            places = pj.get('places', [])
+                            if places:
+                                lat = places[0].get('latitude')
+                                lon = places[0].get('longitude')
+                                if lat and lon:
+                                    nom = http_get(
+                                        f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
+                                        headers={'User-Agent': 'chirp-scraper'},
+                                        timeout=8,
+                                    ).json()
+                                    addr = nom.get('address', {})
+                                    county = addr.get('county')
+                                    state = addr.get('state')
+                                    if county and state:
+                                        key = f"{county}, {state}".lower()
+                                        ctid = rr_index.get(key)
+                                        if ctid:
+                                            pages[f"{county}, {state}"] = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
+                                            continue
+                    except Exception:
+                        pass
+                # unsupported token is ignored
+                continue
+        if input_band_tokens:
+            current_bands = get_selected_band_order()
+            for band in input_band_tokens:
+                if band not in current_bands:
+                    current_bands.append(band)
+            set_selected_bands(current_bands, order=current_bands)
+        if not pages:
+            pages = {k: v for k, v in default_pages.items()}
+
+        save_last_user_state(profile_var.get(), [iv.get().strip() for iv in input_vars])
+
+        sel_bands = [band_listbox.get(i) for i in range(band_listbox.size())]
+        if not sel_bands:
+            if show_warnings:
+                messagebox.showerror('Error', 'Select at least one band to export')
+            return None, None
+
+        sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
+        model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
+        model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
+        cust_level = preferences_data.get('customization_level').get() if preferences_data.get('customization_level') else 'Default'
+
+        rows = []
+        fetch_errors = []
+        for c, u in pages.items():
+            try:
+                page_rows = list(fetch_freqs_for_page(u))
+                if not page_rows:
+                    fetch_errors.append((c, u, 'No repeater rows returned'))
+                for tup in page_rows:
+                    if len(tup) >= 6:
+                        name, f, tone, duplex_hint, offset_hint, row_text = tup[0], tup[1], tup[2], tup[3], tup[4], tup[5]
+                    elif len(tup) == 5:
+                        name, f, tone, duplex_hint, offset_hint = tup[0], tup[1], tup[2], tup[3], tup[4]
+                        row_text = tup[0]
+                    else:
+                        name, f, tone = tup[0], tup[1], tup[2]
+                        duplex_hint, offset_hint = (None, None)
+                        row_text = tup[0]
+                    band_label = None
+                    try:
+                        if 'Emergency' in sel_bands:
+                            lname_check = (row_text or name or '').lower()
+                            emergency_keywords = [
+                                'dispatch', 'police', 'pd', 'sheriff', 'law', 'tac', 'tactical',
+                                'fire', 'fd', 'fireground', 'fire ground', 'fire dispatch', 'fire-tac',
+                                'ems', 'ems-tac', 'ambulance', 'medical', 'emt',
+                                'emergency', 'public safety',
+                                'citywide', 'city-wide', 'city wide', 'c/w', 'cw',
+                                'mutual aid', 'operations', 'rescue', 'command', 'engine',
+                            ]
+                            if any(kw in lname_check for kw in emergency_keywords):
+                                band_label = 'Emergency'
+                            else:
+                                for lo, hi in BAND_RANGES.get('Emergency', []):
+                                    try:
+                                        if lo <= float(f) <= hi:
+                                            band_label = 'Emergency'
+                                            break
+                                    except Exception:
+                                        continue
+
+                        if not band_label:
+                            for band in sel_bands:
+                                if band == 'Emergency':
+                                    continue
+                                ranges = BAND_RANGES.get(band, [])
+                                for lo, hi in ranges:
+                                    try:
+                                        if lo <= float(f) <= hi:
+                                            band_label = band
+                                            break
+                                    except Exception:
+                                        continue
+                                if band_label:
+                                    break
+
+                        if not band_label and 'Emergency' in sel_bands:
+                            lname = (row_text or name or '').lower()
+                            detected_protocol = None
+                            emergency_keywords = [
+                                'dispatch', 'police', 'fire', 'fire dept', 'fire department',
+                                'sheriff', 'ems', 'ambulance', 'emergency', 'public safety',
+                                'citywide', 'city-wide', 'city wide',
+                            ]
+                            p25_tokens = ['p25', 'project 25']
+                            edacs_tokens = ['edacs']
+                            other_digital = ['dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital']
+
+                            match = False
+                            for kw in emergency_keywords:
+                                if kw in lname:
+                                    match = True
+                                    break
+
+                            if not match:
+                                for lo, hi in BAND_RANGES.get('Emergency', []):
+                                    try:
+                                        if lo <= float(f) <= hi:
+                                            match = True
+                                            break
+                                    except Exception:
+                                        continue
+
+                            selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+                            if not selected_emergency_types:
+                                match = False
+                            elif match:
+                                type_tokens = []
+                                for et in selected_emergency_types:
+                                    type_tokens.extend(EMERGENCY_TYPE_KEYWORDS.get(et, []))
+                                if not any(token in lname for token in type_tokens):
+                                    match = False
+
+                            if match and cust_level in ('Advanced', 'High Quality'):
+                                if any(t in lname for t in p25_tokens):
+                                    detected_protocol = 'P25'
+                                elif any(t in lname for t in edacs_tokens):
+                                    detected_protocol = 'EDACS'
+                                if any(t in lname for t in other_digital) and not model_obj.get('supports_digital_mode'):
+                                    match = False
+
+                            if detected_protocol:
+                                if detected_protocol == 'P25' and not model_obj.get('supports_p25'):
+                                    match = False
+                                if detected_protocol == 'EDACS' and not model_obj.get('supports_edacs'):
+                                    match = False
+
+                            if match:
+                                band_label = 'Emergency'
+                                if detected_protocol:
+                                    name = f"{name} [{detected_protocol}]"
+                    except Exception:
+                        pass
+                    if not band_label:
+                        continue
+                    if band_label == 'Emergency' and not is_analog_emergency_channel(name, row_text, c):
+                        continue
+                    rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint, 'RawText': row_text})
+            except Exception as exc:
+                fetch_errors.append((c, u, str(exc)))
+
+        if fetch_errors and show_warnings:
+            warning_text = 'Some RadioReference pages could not be fetched or parsed.\n'
+            warning_text += 'Only fixed-band NOAA/MURS/FRS-GMRS rows may be available.\n\n'
+            warning_text += '\n'.join(f'{label}: {err}' for label, _, err in fetch_errors[:5])
+            if len(fetch_errors) > 5:
+                warning_text += f'\n...and {len(fetch_errors)-5} more.'
+            messagebox.showwarning('RadioReference fetch warning', warning_text)
+
+        if 'NOAA' in sel_bands:
+            for entry in NOAA_FREQS:
+                name, f, tone, raw = entry
+                rows.append({'Name': name or f'NOAA {f}', 'Frequency': f, 'Duplex': '', 'Tone': tone or '', 'Comment': 'Weather', 'Band': 'NOAA'})
+
+        if 'MURS' in sel_bands:
+            for entry in MURS_FREQS:
+                name, f, tone, raw = entry
+                rows.append({'Name': name or f'MURS {f}', 'Frequency': f, 'Duplex': '', 'Tone': tone or '', 'Comment': 'MURS', 'Band': 'MURS'})
+
+        if 'FRS/GMRS' in sel_bands:
+            for entry in FRS_GMRS_FREQS:
+                name, f, duplex, tone, raw = entry
+                rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
+
+        def numeric_frequency(value):
+            try:
+                return float(value)
+            except Exception:
+                return 0.0
+
+        selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
+        # preserve all Emergency channels when Emergency band is selected
+        # rows = limit_emergency_channels(rows, selected_emergency_types, lambda r: 0, numeric_frequency)
+
+        band_order = {b: i for i, b in enumerate(sel_bands)}
+        rows.sort(key=lambda r: (band_order.get(r.get('Band'), 999), numeric_frequency(r.get('Frequency', 0))))
+
+        deduped = []
+        seen_keys = set()
+        for r in rows:
+            key = (
+                r.get('Band', ''),
+                str(r.get('Frequency', '')).strip(),
+                (r.get('Name') or '').strip().lower(),
+                (r.get('Tone') or '').strip(),
+                (r.get('Duplex') or '').strip(),
+                (r.get('Offset') or '').strip(),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped.append(r)
+        rows = deduped
+
+        def compute_offset_local(freq):
+            try:
+                f = float(freq)
+            except Exception:
+                return ''
+            if f >= 420.0:
+                return '5.000'
+            if 144.0 <= f < 148.0:
+                return '0.600'
+            return ''
+
+        def parse_tone_local(tone_text):
+            if not tone_text or not str(tone_text).strip():
+                return ('', '0.0', '0.0')
+            t = str(tone_text).strip()
+            if t.upper() == 'CSQ':
+                return ('CSQ', '0.0', '0.0')
+            m = re.search(r"([0-9]+\.?[0-9]*)", t)
+            if m:
+                try:
+                    valf = float(m.group(1))
+                except Exception:
+                    return (t, '0.0', '0.0')
+                if not (50.0 <= valf <= 260.0):
+                    return (t, '0.0', '0.0')
+                val = f"{valf:.1f}"
+                return ('Tone', val, val)
+            return (t, '0.0', '0.0')
+
+        df_rows = []
+        for r in rows:
+            name = r.get('Name','')
+            freq = r.get('Frequency','')
+            band = r.get('Band','')
+            duplex = '+' if (isinstance(freq, (int,float)) and freq >= 147) else '-' if isinstance(freq, (int,float)) and freq < 147 else ''
+            offset = compute_offset_local(freq) if duplex == '+' else ''
+            tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
+            dtcs = '023' if rTone else ''
+            dtcs_pol = 'NN' if rTone else ''
+            if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS', '2m', '70cm', 'Emergency'):
+                continue
+            if band == 'Emergency':
+                lname = (name or '').lower()
+                protocol = None
+                m = re.search(r'\[(P25|EDACS)\]$', name)
+                if m:
+                    protocol = m.group(1)
+                if protocol:
+                    if cust_level not in ('Advanced', 'High Quality'):
+                        continue
+                    if protocol == 'P25' and not model_obj.get('supports_p25'):
+                        continue
+                    if protocol == 'EDACS' and not model_obj.get('supports_edacs'):
+                        continue
+                else:
+                    other_digital = ('dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital')
+                    if any(d in lname for d in other_digital):
+                        if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
+                            continue
+            skip_value = ''
+            if band == 'NOAA':
+                skip_value = 'S'
+            elif scanner_mode_enabled and profile_var.get() == 'Traveler':
+                # Traveler scans HAM and Emergency channels, so only NOAA remains skipped.
+                skip_value = 'S'
+            elif scanner_mode_enabled and profile_var.get() == 'Emergency Comms' and band in ('70cm', '1.25m', '2m'):
+                # In Emergency profile, HAM bands are skipped so only Emergency channels scan.
+                skip_value = 'S'
+            elif scanner_mode_enabled and profile_var.get() == 'HamScan' and band == 'Emergency':
+                skip_value = 'S'
+            df_rows.append({
+                'Name': name,
+                'Frequency': freq,
+                'Duplex': duplex,
+                'Offset': offset,
+                'Tone': tone_label,
+                'rToneFreq': rTone,
+                'cToneFreq': cTone,
+                'DtcsCode': dtcs,
+                'DtcsPolarity': dtcs_pol,
+                'Mode': 'FM',
+                'TStep': preferences_data.get('step_size').get() if preferences_data.get('step_size') else 5,
+                'Skip': skip_value,
+                'Comment': r.get('Comment','')
+            })
+
+        try:
+            import pandas as pd
+            outdf = pd.DataFrame(df_rows)
+            cols = ["Name","Frequency","Duplex","Offset","Tone","rToneFreq","cToneFreq","DtcsCode","DtcsPolarity","Mode","TStep","Skip","Comment"]
+            for c in cols:
+                if c not in outdf.columns:
+                    outdf[c] = ''
+            outdf = outdf[cols]
+            outdf.index = [f"{i:03d}" for i in range(2, len(outdf)+2)]
+            outdf.index.name = 'Location'
+            exported_data['dataframe'] = outdf
+            exported_data['row_count'] = len(outdf)
+            exported_data['pages'] = pages
+            warn_limit_enabled = APP_SETTINGS.get('warn_channel_limit', {}).get('value', APP_SETTINGS.get('warn_channel_limit', {}).get('default', False))
+            max_channels = model_obj.get('max_channels')
+            if warn_limit_enabled and max_channels and len(outdf) > max_channels:
+                if show_warnings:
+                    messagebox.showwarning(
+                        'Channel Capacity Warning',
+                        f'The export contains {len(outdf)} channels, which exceeds the selected radio model\'s capacity of {max_channels} channels.\n'
+                        'Your radio may not be able to store all of them. Consider reducing the selected bands, locations, or choosing a higher-capacity radio model.'
+                    )
+            return outdf, pages
+        except Exception as exc:
+            if show_warnings:
+                messagebox.showerror('Error', f'Failed to build export preview: {exc}')
+            return None, None
+
+    def open_preview_summary(df):
+        if df is None or len(df) == 0:
+            messagebox.showwarning('Preview', 'No export data available for preview.')
+            return
+        summary_win = tk.Toplevel(root)
+        summary_win.title('Preview Summary')
+        summary_win.geometry('700x500')
+        summary_win.transient(root)
+        summary_win.grab_set()
+        counts = {}
+        skip_counts = 0
+        for _, row in df.iterrows():
+            band = row.get('Comment', '') or 'Unknown'
+            counts[band] = counts.get(band, 0) + 1
+            if str(row.get('Skip', '')).upper() == 'S':
+                skip_counts += 1
+        lines = [f'Rows: {len(df)}', f'Skipped rows: {skip_counts}', '', 'Counts by comment/band:']
+        for k, v in sorted(counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f'  {k}: {v}')
+        txt = tk.Text(summary_win, wrap='word', font=('Courier', 10))
+        txt.pack(fill='both', expand=True, padx=10, pady=10)
+        txt.insert('end', '\n'.join(lines))
+        txt.config(state='disabled')
+        tk.Button(summary_win, text='Close', command=summary_win.destroy, width=10).pack(pady=10)
+
+    def open_export_preview(df):
+        if df is None or len(df) == 0:
+            messagebox.showwarning('Preview', 'No export data available for preview.')
+            return
+
+        preview_win = tk.Toplevel(root)
+        preview_win.title('Export Preview')
+        preview_win.geometry('900x600')
+        preview_win.transient(root)
+        preview_win.grab_set()
+
+        text_frame = tk.Frame(preview_win)
+        text_frame.pack(fill='both', expand=True)
+
+        scrollbar = ttk.Scrollbar(text_frame, orient='vertical')
+        scrollbar.pack(side='right', fill='y')
+        txt = tk.Text(text_frame, wrap='none', yscrollcommand=scrollbar.set, font=('Courier', 10))
+        txt.pack(side='left', fill='both', expand=True)
+        scrollbar.config(command=txt.yview)
+
+        try:
+            preview_text = df.to_string(max_rows=200, max_cols=12)
+        except Exception:
+            preview_text = str(df.head(200))
+        txt.insert('end', preview_text)
+        txt.config(state='disabled')
+
+        def open_pdf_preview():
+            try:
+                import tempfile
+                html = '<html><head><meta charset="utf-8"><style>body{font-family:monospace;}</style></head><body>'
+                html += '<h2>FreqFinder Export Preview</h2>'
+                html += df.to_html(border=1, index=True)
+                html += '<p>Use your browser Print dialog to save to PDF.</p>'
+                html += '</body></html>'
+                tmp = tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8')
+                tmp.write(html)
+                tmp.close()
+                import webbrowser
+                webbrowser.open(f'file://{tmp.name}')
+            except Exception as e:
+                messagebox.showerror('Preview', f'Failed to open print preview: {e}')
+
+        def save_preview_as_csv():
+            try:
+                if df is None or len(df) == 0:
+                    messagebox.showwarning('Preview', 'No export data available to save.')
+                    return
+                initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
+                save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile='FreqFinder_Preview.csv', title='Save Preview CSV as')
+                if not save_path:
+                    return
+                df.to_csv(save_path, index=True)
+                messagebox.showinfo('Saved', f'Preview CSV saved to {save_path}')
+            except Exception as e:
+                messagebox.showerror('Error', f'Failed saving preview CSV: {e}')
+
+        btn_frame = tk.Frame(preview_win)
+        btn_frame.pack(fill='x', pady=8)
+        tk.Button(btn_frame, text='Save Preview CSV', command=save_preview_as_csv, width=16).pack(side='left', padx=10)
+        tk.Button(btn_frame, text='Print Preview', command=open_pdf_preview, width=14).pack(side='left', padx=10)
+        tk.Button(btn_frame, text='Close', command=preview_win.destroy, width=10).pack(side='right', padx=10)
+
+    def on_quick_export():
+        if exporting_flag.get('running'):
+            messagebox.showwarning('Quick Export', 'Export in progress — please wait until it completes.')
+            return
+        df, pages = build_export_dataframe(show_warnings=True)
+        if df is None or len(df) == 0:
+            return
+        exported_data['dataframe'] = df
+        exported_data['row_count'] = len(df)
+        exported_data['pages'] = pages or {}
+
+        default_path = exported_data.get('last_export_path') or None
+        if default_path and os.path.isdir(os.path.dirname(default_path)):
+            save_path = default_path
+        else:
+            default_name = 'FreqFinder_QuickExport.csv'
+            initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
+            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Quick Export CSV as')
+            if not save_path:
+                return
+
+        try:
+            outdf = exported_data['dataframe']
+            import csv as _csv
+            fieldnames = ['Location'] + list(outdf.columns)
+            with open(save_path, 'w', newline='', encoding='utf-8') as wf:
+                writer = _csv.DictWriter(wf, fieldnames=fieldnames)
+                writer.writeheader()
+                out_cols = list(outdf.columns)
+                for row_tup in outdf.itertuples(index=True, name=None):
+                    rec = {'Location': row_tup[0]}
+                    for c, v in zip(out_cols, row_tup[1:]):
+                        rec[c] = v
+                    writer.writerow(rec)
+            exported_data['last_export_path'] = save_path
+            update_status_bar(exported_rows=len(outdf), profile_name=profile_var.get(), last_path=save_path)
+            messagebox.showinfo('Quick Export', f'Wrote {len(outdf)} rows to {save_path}')
+        except Exception as e:
+            messagebox.showerror('Quick Export', f'Failed to save quick export: {e}')
+
+    def on_preview():
+        df, pages = build_export_dataframe(show_warnings=True)
+        if df is None or len(df) == 0:
+            return
+        if preferences_data.get('preview_mode').get() == 0:
+            open_preview_summary(df)
+        else:
+            open_export_preview(df)
 
     # Add Model-Specific Options Frame
     model_options_row = start_row + 1 + len(BAND_RANGES) + 3
@@ -3101,12 +4567,38 @@ def launch_gui_and_run(default_pages, output_path):
     check_model_change()
 
     # compute export row and place button centered across columns
-    export_row = model_options_row + 2
+    export_row = model_options_row + 1
     root.grid_rowconfigure(export_row, weight=0)
     
     export_btn = tk.Button(root, text='Export CSV', command=on_export, bg='#4CAF50', fg='white', height=2, font=('Arial', 11, 'bold'))
-    export_btn.grid(row=export_row, column=0, columnspan=4, pady=12, sticky='ew', padx=8)
+    export_btn.grid(row=export_row, column=0, columnspan=2, pady=12, sticky='ew', padx=8)
     ToolTip(export_btn, 'Export scraped frequencies to CHIRP CSV file\nfor programming into your radio')
+
+    quick_export_btn = tk.Button(root, text='Quick Export', command=lambda: on_quick_export(), bg='#FF9800', fg='white', height=2, font=('Arial', 11, 'bold'))
+    quick_export_btn.grid(row=export_row, column=2, pady=12, sticky='ew', padx=8)
+    ToolTip(quick_export_btn, 'Quick-export the current CSV using the last export location or choose a save path')
+
+    preview_btn = tk.Button(root, text='Preview/Print', command=on_preview, bg='#1976D2', fg='white', height=2, font=('Arial', 11, 'bold'))
+    preview_btn.grid(row=export_row, column=3, pady=12, sticky='ew', padx=8)
+    ToolTip(preview_btn, 'Preview the generated export and open a print-friendly PDF preview in your browser')
+
+    status_var = tk.StringVar(value='Ready')
+    status_bar = tk.Frame(root, bd=1, relief='sunken')
+    status_bar.grid(row=export_row+1, column=0, columnspan=4, sticky='ew', padx=8, pady=(0,4))
+    status_label = tk.Label(status_bar, textvariable=status_var, anchor='w', font=('Arial', 9))
+    status_label.pack(fill='x', padx=6, pady=4)
+
+    def update_status_bar(exported_rows=None, profile_name=None, last_path=None):
+        parts = ['Ready']
+        if profile_name:
+            parts.append(f'Profile: {profile_name}')
+        if exported_rows is not None:
+            parts.append(f'Last export rows: {exported_rows}')
+        if last_path:
+            parts.append(f'Last path: {last_path}')
+        status_var.set(' | '.join(parts))
+
+    update_status_bar()
 
     root.mainloop()
 
@@ -3137,7 +4629,11 @@ def main():
     if args.pages:
         tokens = args.pages
         pages = {}
+        ignored_band_tokens = []
         for t in tokens:
+            if is_band_token(t):
+                ignored_band_tokens.append(t)
+                continue
             if t.startswith('http://') or t.startswith('https://'):
                 label = get_location_from_url(t) or t
                 pages[label] = t
@@ -3145,10 +4641,13 @@ def main():
                 # map ZIP to county page
                 zip_pages = map_zips_to_counties([t])
                 pages.update(zip_pages)
+        if ignored_band_tokens:
+            print(f"NOTE: Ignoring band tokens passed to --pages: {', '.join(ignored_band_tokens)}")
     else:
         if args.prompt:
-            pages = get_pages_from_user()
-            if not pages:
+                pages, prompt_bands = get_pages_from_user()
+                if prompt_bands:
+                    print(f"Selected bands from prompt: {', '.join(prompt_bands)}")
                 pages = DEFAULT_PAGES
         else:
             pages = DEFAULT_PAGES
@@ -3285,11 +4784,11 @@ def main():
         return ""
 
     def parse_tone(tone_text):
-        if not tone_text:
-            return ("", "", "")
-        t = tone_text.strip()
+        if not tone_text or not str(tone_text).strip():
+            return ('', '', '')
+        t = str(tone_text).strip()
         if t.upper() == 'CSQ':
-            return ('CSQ', '', '')
+            return ('', '', '')
         # try extract numeric tone
         m = re.search(r"([0-9]+\.?[0-9]*)", t)
         if m:
@@ -3301,7 +4800,7 @@ def main():
                 return ('', '', '')
             val = f"{valf:.1f}"
             return ('Tone', val, val)
-        return (t, '', '')
+        return ('', '', '')
 
     processed = []
     for r in df.to_dict(orient='records'):
