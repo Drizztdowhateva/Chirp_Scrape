@@ -120,6 +120,8 @@ DEFAULT_PERSISTENT_SETTINGS = {
     'last_zip_entries': [],
     'recent_zip_sets': [],
     'last_step_size': 5,
+    'scheduled_refresh': 0,
+    'offline_cache': 0,
 }
 
 
@@ -264,6 +266,8 @@ except Exception:
     pass
 
 # NOAA weather channels are provided in csv_files/US NOAA Weather Alert.csv
+# The United States has 10 standard NOAA weather radio channels.
+NOAA_CHANNEL_LIMIT = 10
 NOAA_CSV = os.path.join(os.path.dirname(__file__), 'csv_files', 'US NOAA Weather Alert.csv')
 NOAA_FREQS = []
 try:
@@ -271,6 +275,8 @@ try:
     with open(NOAA_CSV, newline='', encoding='utf-8') as _fh:
         reader = _csv.DictReader(_fh)
         for row in reader:
+            if len(NOAA_FREQS) >= NOAA_CHANNEL_LIMIT:
+                break
             name = (row.get('Name') or row.get('name') or '').strip()
             freq_s = (row.get('Frequency') or row.get('frequency') or '').strip()
             if not freq_s:
@@ -329,7 +335,7 @@ except Exception:
     FRS_GMRS_FREQS = []
 
 DEFAULT_PAGES = {
-    "Cook County, Illinois": "https://www.radioreference.com/db/browse/ctid/606/ham",
+    "Cook County, Illinois": "https://www.radioreference.com/db/browse/ctid/606",
 }
 
 # Band definitions for GUI selection and filtering (ranges in MHz)
@@ -370,8 +376,8 @@ DEFAULT_BAND_PROFILES = {
         'scanner_mode': True,
     },
     'HamScan': {
-        'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
-        'order': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'bands': ['70cm', '1.25m', '2m'],
+        'order': ['70cm', '1.25m', '2m'],
         'emergency_types': [],
         'scanner_mode': True,
     },
@@ -383,8 +389,6 @@ EMERGENCY_TYPE_KEYWORDS = {
     'EMS': ['ems', 'ems-tac', 'ems:', 'ambulance', 'medical', 'emt'],
     'Citywide': ['citywide', 'city-wide', 'city wide', 'c/w', 'cw'],
 }
-
-EMERGENCY_TYPE_CHANNEL_LIMIT = 3
 
 def emergency_row_type(row):
     text = ' '.join(filter(None, [
@@ -399,32 +403,55 @@ def emergency_row_type(row):
     return None
 
 
-def limit_emergency_channels(rows, selected_emergency_types, locality_priority_fn, numeric_frequency_fn):
-    if not selected_emergency_types:
-        return rows
-    emergency_rows = [r for r in rows if r.get('Band') == 'Emergency']
-    if not emergency_rows:
-        return rows
-    other_rows = [r for r in rows if r.get('Band') != 'Emergency']
-    selected_emergency_types = [et for et in selected_emergency_types if et]
-    if not selected_emergency_types:
-        return rows
-    emergency_rows.sort(key=lambda r: (locality_priority_fn(r), numeric_frequency_fn(r.get('Frequency', 0))))
-    buckets = {et: [] for et in selected_emergency_types}
-    uncategorized = []
-    for r in emergency_rows:
-        et = emergency_row_type(r)
-        if et in buckets:
-            buckets[et].append(r)
-        else:
-            uncategorized.append(r)
-    chosen = []
-    for et in selected_emergency_types:
-        chosen.extend(buckets[et][:EMERGENCY_TYPE_CHANNEL_LIMIT])
-    remaining = max(0, len(selected_emergency_types) * EMERGENCY_TYPE_CHANNEL_LIMIT - len(chosen))
-    if remaining:
-        chosen.extend(uncategorized[:remaining])
-    return other_rows + chosen
+def select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order=None):
+    """Select rows across ZIPs using proportional allocation by available rows."""
+    if not zip_rows or remaining_slots <= 0:
+        return []
+    zip_counts = {zip_code: len(rows) for zip_code, rows in zip_rows.items()}
+    total_rows = sum(zip_counts.values())
+    if total_rows <= 0:
+        return []
+
+    if zip_order:
+        order_index = {zip_code: idx for idx, zip_code in enumerate(zip_order)}
+        sorted_zips = sorted(zip_rows.keys(), key=lambda z: (zip_counts[z], order_index.get(z, 999)))
+    else:
+        sorted_zips = sorted(zip_rows.keys(), key=lambda z: (zip_counts[z], z))
+
+    zip_targets = {}
+    fractions = []
+    for zip_code in sorted_zips:
+        exact = remaining_slots * zip_counts[zip_code] / total_rows
+        base = int(exact)
+        zip_targets[zip_code] = base
+        fractions.append((exact - base, zip_code))
+
+    assigned = sum(zip_targets.values())
+    diff = remaining_slots - assigned
+    if diff > 0:
+        fractions.sort(key=lambda t: (-t[0], zip_counts[t[1]], t[1]))
+        for _, zip_code in fractions[:diff]:
+            zip_targets[zip_code] += 1
+    elif diff < 0:
+        fractions.sort(key=lambda t: (t[0], -zip_counts[t[1]], t[1]))
+        for _, zip_code in fractions[: -diff]:
+            zip_targets[zip_code] -= 1
+
+    selected = []
+    overflow = []
+    for zip_code in sorted_zips:
+        rows = zip_rows.get(zip_code, [])
+        target = min(zip_targets.get(zip_code, 0), len(rows))
+        selected.extend(rows[:target])
+        for overflow_row in rows[target:]:
+            overflow.append((zip_counts[zip_code], zip_code, overflow_row))
+
+    needed = remaining_slots - len(selected)
+    if needed > 0:
+        overflow.sort(key=lambda item: (-item[0], item[1]))
+        for _, _, extra_row in overflow[:needed]:
+            selected.append(extra_row)
+    return selected
 
 
 def is_analog_emergency_channel(name, row_text='', comment='', model_obj=None):
@@ -467,8 +494,10 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-    'supports_1_25': False,
+        'max_channels': 128,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
         'description': 'Popular budget dual-band UHF/VHF handheld. Includes UV-5R Mini and UV-5R Plus variants.'
     },
 
@@ -483,8 +512,10 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-    'supports_1_25': False,
+        'max_channels': 128,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
         'description': 'UV-5R Mini variant with the same core features and compatibility as UV-5R.'
     },
 
@@ -499,8 +530,10 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-    'supports_1_25': False,
+        'max_channels': 128,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
         'description': 'UV-5R Plus variant with expanded firmware compatibility and same channel support.'
     },
 
@@ -699,6 +732,16 @@ def valid_freq(f):
         return False
     return any(lo <= fv <= hi for lo, hi in VALID_BANDS)
 
+def model_supports_frequency(model_obj, freq):
+    try:
+        fv = float(freq)
+    except Exception:
+        return False
+    ranges = model_obj.get('frequency_ranges')
+    if not ranges:
+        return True
+    return any(lo <= fv <= hi for lo, hi in ranges)
+
 def scrape_rr(url):
     """Fetch `url` and return parsed frequency rows via parse_rr_html."""
     resp = http_get(url, timeout=15)
@@ -710,7 +753,10 @@ def parse_rr_html(html_text):
     soup = BeautifulSoup(html_text, "html.parser")
     out = []
     for table in soup.select("table.rrdbTable"):
-        for tr in table.select("tbody tr"):
+        rows = table.select("tbody tr")
+        if not rows:
+            rows = [tr for tr in table.select("tr") if tr.find_all("td")]
+        for tr in rows:
             td = tr.find_all("td")
             if len(td) < 3:
                 continue
@@ -805,7 +851,12 @@ def fetch_freqs_for_page(url):
     except Exception:
         pass
     # fallback: always scrape directly when API path is unavailable or returns nothing
-    return scrape_rr(url)
+    result = scrape_rr(url)
+    if not result:
+        ctid_alt = re.sub(r'(/db/browse/ctid/\d+)(?:/ham)?/?$', r'\1', url, flags=re.I)
+        if ctid_alt and ctid_alt != url:
+            result = scrape_rr(ctid_alt)
+    return result
 
 
 def get_rr_counterpart_page(url, target_page):
@@ -848,7 +899,7 @@ def is_band_token(token):
 def parse_input_tokens(text):
     if not text:
         return []
-    return [tok for tok in re.split(r"[\s,;]+", text.strip()) if tok]
+    return [tok for tok in re.split(r"[\s,;:-]+", text.strip()) if tok]
 
 
 def extract_band_tokens(text):
@@ -858,6 +909,70 @@ def extract_band_tokens(text):
         if band and band not in bands:
             bands.append(band)
     return bands
+
+SPECIAL_BAND_TOKEN_GROUPS = {
+    'HAM': ['2m', '70cm', '1.25m'],
+    'REPEATER': ['2m', '70cm', '1.25m'],
+}
+
+def expand_band_tokens(tokens):
+    bands = []
+    for tok in tokens:
+        normalized = normalize_band_token(tok)
+        if normalized in SPECIAL_BAND_TOKEN_GROUPS:
+            for band in SPECIAL_BAND_TOKEN_GROUPS[normalized]:
+                if band not in bands:
+                    bands.append(band)
+            continue
+        band = canonical_band_name(tok)
+        if band and band not in bands:
+            bands.append(band)
+    return bands
+
+
+def build_radioreference_pages(tokens, rr_index=None):
+    return {label: url for label, url, _ in build_radioreference_page_entries(tokens, rr_index)}
+
+
+def build_radioreference_page_entries(tokens, rr_index=None):
+    entries = []
+    for tok in tokens:
+        if tok.startswith('http://') or tok.startswith('https://'):
+            entries.append((tok, tok, None))
+            continue
+        if re.fullmatch(r'^\d{5}$', tok):
+            zip_code = tok
+            label = f'ZIP {tok}'
+            url = f'https://www.radioreference.com/db/search/?zip={tok}'
+            if rr_index is not None:
+                try:
+                    pr = http_get(f'http://api.zippopotam.us/us/{tok}', timeout=6)
+                    if pr.status_code == 200:
+                        pj = pr.json()
+                        places = pj.get('places', [])
+                        if places:
+                            lat = places[0].get('latitude')
+                            lon = places[0].get('longitude')
+                            if lat and lon:
+                                nom = http_get(
+                                    f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
+                                    headers={'User-Agent': 'chirp-scraper'},
+                                    timeout=8,
+                                ).json()
+                                addr = nom.get('address', {})
+                                county = addr.get('county')
+                                state = addr.get('state')
+                                if county and state:
+                                    key = f"{county}, {state}".lower()
+                                    ctid = rr_index.get(key)
+                                    if ctid:
+                                        label = f"{county}, {state} ({tok})"
+                                        url = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
+                except Exception:
+                    pass
+            entries.append((label, url, zip_code))
+            continue
+    return entries
 
 
 def get_pages_from_user():
@@ -874,8 +989,8 @@ def get_pages_from_user():
     Band names are not page selectors; they should be chosen separately in the GUI.
     """
     prompt_text = (
-        "Enter ZIP codes or Radioreference URLs (comma or space separated).\n"
-        "Examples: 60601, 1319, https://www.radioreference.com/db/browse/ctid/606/ham\n"
+        "Enter ZIP codes or Radioreference URLs (comma, hyphen, or space separated).\n"
+        "Examples: 60601, 1319, 60626-49626-49677, https://www.radioreference.com/db/browse/ctid/606\n"
         "Bands: 2m, 70cm, 1.25m, NOAA, Emergency can also be typed and will be treated as band selections."
     )
 
@@ -939,7 +1054,7 @@ def get_pages_from_user():
             pages[label] = t
             continue
         if re.fullmatch(r'\d{5}', t):
-            url = f"https://www.radioreference.com/db/browse/zip/{t}/ham"
+            url = f"https://www.radioreference.com/db/search/?zip={t}"
             pages[f"ZIP {t}"] = url
             continue
         # unsupported token is ignored
@@ -1032,7 +1147,10 @@ def load_rr_index(force_refresh=False):
     import csv
 
     csv_path = os.path.join(os.path.dirname(__file__), 'radioref.csv')
-    if force_refresh or not os.path.exists(csv_path):
+    settings = load_persistent_settings()
+    offline_cache_enabled = bool(settings.get('offline_cache', 0))
+    should_refresh = force_refresh or (not os.path.exists(csv_path) and not offline_cache_enabled)
+    if should_refresh:
         refreshed = refresh_rr_index()
         if force_refresh and not refreshed:
             message = 'Could not refresh radioref.csv from the configured repository. '
@@ -1059,19 +1177,18 @@ def get_county_from_zip(zip_code):
 
     Returns (label, url) or (None, zip_page_url) on fallback.
     """
-    zip_url = f"https://www.radioreference.com/db/browse/zip/{zip_code}/ham"
+    zip_url = f"https://www.radioreference.com/db/search/?zip={zip_code}"
     try:
         r = http_get(zip_url, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        # look for a link to /db/browse/ctid/\d+
-        a = soup.find('a', href=re.compile(r'/db/browse/ctid/\d+'))
-        if a and a.get('href'):
-            href = a['href']
-            label = a.text.strip() or f"County {zip_code}"
-            # make absolute URL
-            if href.startswith('/'):
-                href = 'https://www.radioreference.com' + href
-            return (label, href)
+        if re.search(r'/db/browse/ctid/\d+', r.url):
+            soup = BeautifulSoup(r.text, 'html.parser')
+            title = None
+            h2 = soup.select_one('h2')
+            if h2 and h2.text.strip():
+                title = h2.text.strip()
+            elif soup.title and soup.title.text:
+                title = soup.title.text.strip()
+            return (title or f'ZIP {zip_code}', r.url)
     except Exception:
         pass
 
@@ -1374,17 +1491,183 @@ def launch_gui_and_run(default_pages, output_path):
     # File menu with Exit and Save As
     filemenu = tk.Menu(menubar, tearoff=0)
     
+    def write_export_csv(save_path, df):
+        import csv as _csv
+        out_cols = list(df.columns)
+        with open(save_path, 'w', newline='', encoding='utf-8') as wf:
+            writer = _csv.DictWriter(wf, fieldnames=['Location'] + out_cols)
+            writer.writeheader()
+            for row_tup in df.itertuples(index=True, name=None):
+                rec = {'Location': row_tup[0]}
+                for c, v in zip(out_cols, row_tup[1:]):
+                    rec[c] = v
+                writer.writerow(rec)
+
+    def _normalize_export_filename(name_text):
+        return re.sub(r'[^A-Za-z0-9]+', '_', str(name_text)).strip('_')
+
+    def _compute_export_filename(source_name, model_name, bands):
+        from datetime import datetime
+        source_label = 'RadioRef' if str(source_name).lower().startswith('radioref') else 'RadioBrowser'
+        model_label = _normalize_export_filename(model_name or 'Generic') or 'Generic'
+        if bands:
+            band_label = '-'.join(_normalize_export_filename(b) for b in bands if _normalize_export_filename(b))
+        else:
+            band_label = 'Bandplan'
+        date_label = datetime.now().strftime('%Y%m%d')
+        return f'FreqFinder_{model_label}_{source_label}_{band_label}_{date_label}.csv'
+
+    def _get_default_export_filename(pages):
+        selected_bands = []
+        try:
+            selected_bands = get_selected_band_order()
+        except Exception:
+            selected_bands = []
+        source_name = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
+        model_raw = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
+        return _compute_export_filename(source_name, model_raw, selected_bands)
+
+    def _get_zip_label(pages):
+        if not isinstance(pages, dict):
+            return None
+        zip_candidates = []
+        for k, v in pages.items():
+            m1 = re.search(r"(\d{5})", str(k))
+            m2 = re.search(r"(\d{5})", str(v))
+            if m1:
+                zip_candidates.append(m1.group(1))
+            elif m2:
+                zip_candidates.append(m2.group(1))
+        unique_zips = []
+        for z in zip_candidates:
+            if z not in unique_zips:
+                unique_zips.append(z)
+        if unique_zips:
+            if len(unique_zips) <= 6:
+                return '-'.join(unique_zips)
+            return f"{unique_zips[0]}[{len(unique_zips)}]"
+        return None
+
+    def _get_default_export_filename_with_pages(pages):
+        default_name = _get_default_export_filename(pages)
+        zip_label = _get_zip_label(pages)
+        if zip_label and zip_label != 'Bandplan':
+            default_name = default_name.replace('_Bandplan_', f'_{zip_label}_')
+        return default_name
+
+    def _get_quick_export_default_filename():
+        pages = exported_data.get('pages') or {}
+        return _get_default_export_filename_with_pages(pages)
+
+    def _get_preview_default_filename():
+        pages = exported_data.get('pages') or {}
+        name = _get_default_export_filename_with_pages(pages)
+        return name.replace('.csv', '_Preview.csv')
+
+    def _get_batch_export_filename(profile_name):
+        source_name = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
+        model_raw = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
+        bands = get_selected_band_order() if callable(get_selected_band_order) else []
+        safe_profile = _normalize_export_filename(profile_name or 'profile')
+        base_name = _compute_export_filename(source_name, model_raw, bands)
+        return base_name.replace('.csv', f'_{safe_profile}.csv')
+
+    def _row_score(row):
+        score = 0
+        for field in ('Name', 'Comment', 'Tone', 'rToneFreq', 'cToneFreq', 'DtcsCode', 'Duplex', 'Offset'):
+            if row.get(field):
+                score += 1
+        score += len(str(row.get('Name','')))
+        score += len(str(row.get('Comment','')))
+        return score
+
+    def _dedupe_export_rows(rows):
+        grouped = {}
+        for r in rows:
+            key = (
+                str(r.get('Frequency', '')).strip(),
+                str(r.get('Duplex', '')).strip(),
+                str(r.get('Offset', '')).strip(),
+                str(r.get('Tone', '')).strip(),
+                str(r.get('rToneFreq', '')).strip(),
+                str(r.get('cToneFreq', '')).strip(),
+                str(r.get('DtcsCode', '')).strip(),
+                str(r.get('DtcsPolarity', '')).strip(),
+                str(r.get('Mode', '')).strip(),
+            )
+            existing = grouped.get(key)
+            if not existing or _row_score(r) > _row_score(existing):
+                grouped[key] = r
+        return list(grouped.values())
+
+    def _format_export_statistics(df):
+        band_counts = df['Band'].value_counts().to_dict() if 'Band' in df.columns else {}
+        tone_counts = df['Tone'].value_counts().head(5).to_dict() if 'Tone' in df.columns else {}
+        offset_counts = df['Offset'].value_counts().head(5).to_dict() if 'Offset' in df.columns else {}
+
+        lines = [f"Channels exported: {len(df)}"]
+        if band_counts:
+            lines.append('Bands: ' + ', '.join(f'{k}={v}' for k, v in sorted(band_counts.items())))
+        if tone_counts:
+            lines.append('Top tones: ' + ', '.join(f'{k}={v}' for k, v in tone_counts.items()))
+        if offset_counts:
+            lines.append('Top offsets: ' + ', '.join(f'{k}={v}' for k, v in offset_counts.items()))
+        return '\n'.join(lines)
+
+    def compute_csv_row_hashes(csv_path):
+        import csv as _csv, hashlib as _hashlib
+        row_hashes = []
+        with open(csv_path, newline='', encoding='utf-8') as rf:
+            reader = _csv.reader(rf)
+            headers = next(reader, None)
+            for row in reader:
+                row_hashes.append(_hashlib.sha256('\x1f'.join([str(cell) for cell in row]).encode('utf-8')).hexdigest())
+        return headers, row_hashes
+
+    def verify_export_file_hashes():
+        paths = []
+        for key in ('save_as_path', 'quick_export_path', 'preview_csv_path'):
+            path = exported_data.get(key)
+            if not path or not os.path.isfile(path):
+                return
+            paths.append((key, path))
+
+        if len(paths) != 3:
+            return
+
+        try:
+            file_hashes = [compute_csv_row_hashes(path) for _, path in paths]
+            headers = [h for h, _ in file_hashes]
+            if any(h != headers[0] for h in headers[1:]):
+                raise ValueError('CSV column headers do not match.')
+            rows_list = [rows for _, rows in file_hashes]
+            if any(len(rows) != len(rows_list[0]) for rows in rows_list[1:]):
+                raise ValueError('CSV row counts do not match.')
+            for row_idx in range(len(rows_list[0])):
+                row_hash = rows_list[0][row_idx]
+                for other_rows in rows_list[1:]:
+                    if other_rows[row_idx] != row_hash:
+                        raise ValueError(f'Row {row_idx + 1} differs between export files.')
+            messagebox.showinfo(
+                'Export Verification',
+                'Save As, Quick Export, and Preview CSV files have identical row hashes.'
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                'Export Verification',
+                f'Export file verification failed: {exc}'
+            )
+
     def on_save_as():
         if exporting_flag.get('running'):
             messagebox.showwarning('Save As', 'Export in progress — please wait until it completes.')
             return
-        if exported_data['dataframe'] is None:
-            df, pages = build_export_dataframe(show_warnings=True)
-            if df is None or len(df) == 0:
-                return
-            exported_data['dataframe'] = df
-            exported_data['row_count'] = len(df)
-            exported_data['pages'] = pages or {}
+        df, pages = build_export_dataframe(show_warnings=True)
+        if df is None or len(df) == 0:
+            return
+        exported_data['dataframe'] = df
+        exported_data['row_count'] = len(df)
+        exported_data['pages'] = pages or {}
 
         # Create a small progress window and write row-by-row so user sees progress
         progress_window = tk.Toplevel(root)
@@ -1431,17 +1714,7 @@ def launch_gui_and_run(default_pages, output_path):
                 for z in zip_candidates:
                     if z not in unique_zips:
                         unique_zips.append(z)
-                if unique_zips:
-                    if len(unique_zips) <= 6:
-                        zip_part = '-'.join(unique_zips)
-                    else:
-                        zip_part = f"{unique_zips[0]}[{len(unique_zips)}]"
-                else:
-                    first_label = next(iter(pages_meta.keys()), 'Export') if isinstance(pages_meta, dict) else 'Export'
-                    zip_part = re.sub(r'[^A-Za-z0-9]+', '_', first_label).strip('_')
-
-                month_part = datetime.now().strftime('%b%Y')
-                default_name = f"FreqFinder_{model_s}_{zip_part}_{month_part}.csv"
+                default_name = _get_default_export_filename_with_pages(exported_data.get('pages') or {})
             except Exception:
                 default_name = 'chirp_output.csv'
 
@@ -1476,9 +1749,11 @@ def launch_gui_and_run(default_pages, output_path):
                     update_progress(f'Writing {i}/{total} rows...')
 
             progress_window.destroy()
+            exported_data['save_as_path'] = save_path
             exported_data['last_export_path'] = save_path
             update_status_bar(exported_rows=total, profile_name=profile_var.get(), last_path=save_path)
             messagebox.showinfo('Done', f'Wrote {total} rows to {save_path}')
+            verify_export_file_hashes()
         except Exception as e:
             progress_window.destroy()
             messagebox.showerror('Error', f'Failed to save CSV: {e}')
@@ -1562,14 +1837,7 @@ def launch_gui_and_run(default_pages, output_path):
                 try:
                     import csv as _csv
                     out_cols = list(df.columns)
-                    with open(save_path, 'w', newline='', encoding='utf-8') as wf:
-                        writer = _csv.DictWriter(wf, fieldnames=['Location'] + out_cols)
-                        writer.writeheader()
-                        for row_tup in df.itertuples(index=True, name=None):
-                            rec = {'Location': row_tup[0]}
-                            for c, v in zip(out_cols, row_tup[1:]):
-                                rec[c] = v
-                            writer.writerow(rec)
+                    write_export_csv(save_path, df)
                     count += 1
                 except Exception:
                     errors.append(name)
@@ -1727,13 +1995,6 @@ def launch_gui_and_run(default_pages, output_path):
     
     helpmenu.add_command(label='Getting Started', command=show_getting_started)
     helpmenu.add_separator()
-    # Link to RadioReference site
-    def open_radioreference():
-        try:
-            webbrowser.open('https://www.radioreference.com')
-        except Exception:
-            pass
-    helpmenu.add_command(label='RadioReference', command=open_radioreference)
     # How-To opens the project README
     def open_readme():
         try:
@@ -1743,10 +2004,57 @@ def launch_gui_and_run(default_pages, output_path):
         except Exception:
             try:
                 pass
-                # webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
+                # webbrowser.open('https://github.com/Drizztdowhateva/FreqFinder')  # preserved upstream reference for attribution
             except Exception:
                 pass
     helpmenu.add_command(label='How-To', command=open_readme)
+    # Link to RadioReference site
+    def open_radioreference():
+        try:
+            webbrowser.open('https://www.radioreference.com')
+        except Exception:
+            pass
+    helpmenu.add_command(label='RadioReference', command=open_radioreference)
+
+    def show_races_help():
+        races_window = tk.Toplevel(root)
+        races_window.title('RACES & FCC Ham Radio Rules')
+        races_window.resizable(True, True)
+        center_and_clamp(races_window, 720, 600)
+
+        canvas = tk.Canvas(races_window)
+        scrollbar = ttk.Scrollbar(races_window, orient='vertical', command=canvas.yview)
+        frame = tk.Frame(canvas)
+        frame.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.create_window((0, 0), window=frame, anchor='nw')
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        title = tk.Label(frame, text='RACES & FCC Rules for Amateur Radio Operators', font=('Arial', 12, 'bold'), justify='left')
+        title.pack(anchor='w', padx=15, pady=(12, 8))
+
+        content = (
+            'The Radio Amateur Civil Emergency Service (RACES) is a FCC-authorized amateur radio service that provides communications support during declared emergencies. '
+            'RACES operation must follow FCC Part 97 rules, including station licensing, identification, and permitted frequency bands.\n\n'
+            'Key points:\n'
+            '• RACES stations may operate only when activated by civil authorities or an Emergency Management Agency.\n'
+            '• Operators must hold a valid FCC Amateur Radio license.\n'
+            '• Communications must use authorized frequencies and modes for the selected band.\n'
+            '• RACES stations often use VHF/UHF repeaters, simplex channels, and national calling frequencies for emergency coordination.\n'
+            '• When operating under RACES, the station should identify with the FCC-assigned call sign and the RACES station designation.\n\n'
+            'Recommended practice:\n'
+            '• Confirm local emergency communications plans and authorized RACES frequencies before deployment.\n'
+            '• Use only the minimum power necessary for effective communication.\n'
+            '• Avoid routine non-emergency traffic on RACES frequencies unless authorized.\n'
+            '• If you are not a RACES participant, use standard amateur emergency procedures under ARES or general emergency traffic guidelines instead.\n\n'
+            'This help text is intended as a general reference. Always consult the latest FCC Part 97 rules and your local emergency communications authority for official RACES operating requirements.'
+        )
+        label = tk.Label(frame, text=content, font=('Arial', 9), justify='left', wraplength=680, fg='#333333')
+        label.pack(anchor='w', padx=15, pady=(0, 12))
+
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+    helpmenu.add_command(label='RACES Rules', command=show_races_help)
 
     # Contact submenu
     contactmenu = tk.Menu(helpmenu, tearoff=0)
@@ -1761,7 +2069,7 @@ def launch_gui_and_run(default_pages, output_path):
 
     def open_github():
         try:
-            webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape')  # preserved upstream reference for attribution
+            webbrowser.open('https://github.com/Drizztdowhateva/FreqFinder')
         except Exception:
             pass
 
@@ -1796,30 +2104,21 @@ def launch_gui_and_run(default_pages, output_path):
             ('📤 Multiple Export Formats',
              'Export to additional formats beyond CHIRP CSV: Kenwood MCP, Icom CS, RT Systems,'
              ' or plain-text frequency lists that can be pasted into other programming software.'),
-            ('🔍 Frequency Deduplication',
-             'Detect and merge duplicate frequencies that appear across multiple RadioReference'
-             ' pages, keeping the entry with the most metadata (tone, name, description).'),
             ('⏱ Scheduled Refresh',
              'Optionally re-fetch RadioReference pages on a configurable schedule so your'
              ' channel list stays up-to-date without manual intervention.'),
             ('🌐 Offline / Cached Mode',
              'Cache the last successful scrape result per URL so the app can be used offline,'
              ' falling back to cached data when RadioReference is unreachable.'),
-            ('📊 Frequency Statistics',
-             'Show a summary panel after export: number of channels per band, tone distribution,'
-             ' and most-common repeater offsets — helpful for spotting data-quality issues.'),
             ('🔒 GMRS License Checker',
              'Optional reminder that GMRS operation requires an FCC license; add a gentle'
              ' warning when exporting GMRS channels without a stored license number.'),
-            ('🛰 P25 / DMR Channel Tagging',
-             'Auto-detect P25 and DMR systems from RadioReference tags and annotate exported'
-             ' channels so they can be filtered or highlighted in a compatible radio.'),
+            ('🛰 Enhanced Digital Tagging',
+             'Expand protocol detection and export marking for P25, DMR, NXDN, and other'
+             ' digital trunking systems so compatible radios can filter them reliably.'),
             ('📝 Notes & Labels',
              'Allow the user to attach free-text notes to individual channels before exporting,'
              ' stored in the CHIRP Comment field.'),
-            ('🎨 Theme Customization',
-             'Expose all theme colors in the Preferences dialog so users can fully'
-             ' personalize the UI appearance without editing source code.'),
         ]
 
         for title_text, desc in improvements:
@@ -1832,7 +2131,7 @@ def launch_gui_and_run(default_pages, output_path):
                  font=('Arial', 9, 'italic'), fg='#0066cc').pack(anchor='w', padx=15, pady=(10, 6))
 
         def _open_issues():
-            webbrowser.open('https://github.com/Drizztdowhateva/Chirp_Scrape/issues')
+            webbrowser.open('https://github.com/Drizztdowhateva/FreqFinder/issues')
         tk.Button(sf, text='Open GitHub Issues', command=_open_issues,
                   bg='#0066cc', fg='white', font=('Arial', 9, 'bold')).pack(anchor='w', padx=15, pady=(0, 15))
 
@@ -2237,7 +2536,15 @@ def launch_gui_and_run(default_pages, output_path):
         'model_features': {},
         'frs_gmrs_unlock': tk.IntVar(value=int(persistent_settings.get('frs_gmrs_unlock', 0)) if persistent_settings.get('frs_gmrs_unlock') is not None else 0),
         'scanner_mode': tk.IntVar(value=int(persistent_settings.get('scanner_mode', 0)) if persistent_settings.get('scanner_mode') is not None else 0),
+        'scheduled_refresh': tk.IntVar(value=int(persistent_settings.get('scheduled_refresh', 0)) if persistent_settings.get('scheduled_refresh') is not None else 0),
+        'offline_cache': tk.IntVar(value=int(persistent_settings.get('offline_cache', 0)) if persistent_settings.get('offline_cache') is not None else 0),
     }
+
+    if persistent_settings.get('scheduled_refresh', 0) and not persistent_settings.get('offline_cache', 0):
+        try:
+            refresh_rr_index()
+        except Exception:
+            pass
 
     def open_preferences():
         pref_window = tk.Toplevel(root)
@@ -2464,6 +2771,20 @@ def launch_gui_and_run(default_pages, output_path):
         tk.Button(api_scrollable_frame, text='Use built-in encrypted key', command=lambda: handle_api_choice('Use built-in (encrypted)'), bg='#1976D2', fg='white', width=20).pack(anchor='w', padx=10, pady=(0, 8))
         tk.Button(api_scrollable_frame, text='Refresh RadioReference index', command=refresh_rr_index_ui, bg='#1976D2', fg='white', width=28).pack(anchor='w', padx=10, pady=(0, 12))
 
+        scheduled_refresh_var = tk.IntVar(value=preferences_data['scheduled_refresh'].get())
+        scheduled_refresh_cb = tk.Checkbutton(api_scrollable_frame,
+                                             text='Refresh RadioReference index on every load',
+                                             variable=scheduled_refresh_var)
+        scheduled_refresh_cb.pack(anchor='w', padx=10, pady=(4, 4))
+        ToolTip(scheduled_refresh_cb, 'Attempt to refresh radioref.csv automatically at startup when internet access is available.')
+
+        offline_cache_var = tk.IntVar(value=preferences_data['offline_cache'].get())
+        offline_cache_cb = tk.Checkbutton(api_scrollable_frame,
+                                          text='Use Offline / Cache mode (do not refresh automatically)',
+                                          variable=offline_cache_var)
+        offline_cache_cb.pack(anchor='w', padx=10, pady=(0, 12))
+        ToolTip(offline_cache_cb, 'Use the local radioref.csv cache only. Automatic refresh is skipped when this option is enabled.')
+
         idx_status = 'present' if os.path.exists(os.path.join(os.path.dirname(__file__), 'radioref.csv')) else 'missing'
         tk.Label(api_scrollable_frame, text=f'Local RadioReference index is currently {idx_status}. If online, press Refresh to update; if offline, local data will be used.', wraplength=700, justify='left', fg='#666666', font=('Arial', 8)).pack(anchor='w', padx=10, pady=(0, 10))
 
@@ -2557,6 +2878,8 @@ def launch_gui_and_run(default_pages, output_path):
             preferences_data['preview_mode'].set(preview_mode_var.get())
             preferences_data['scanner_mode'].set(scanner_mode_var.get())
             preferences_data['frs_gmrs_unlock'].set(frs_pref_var.get())
+            preferences_data['scheduled_refresh'].set(scheduled_refresh_var.get())
+            preferences_data['offline_cache'].set(offline_cache_var.get())
             # Store safety/startup settings
             for key, var in safety_vars.items():
                 APP_SETTINGS[key]['value'] = var.get()
@@ -2581,6 +2904,8 @@ def launch_gui_and_run(default_pages, output_path):
                 'filter_narrow_band': preferences_data['filter_narrow_band'].get(),
                 'sort_output': preferences_data['sort_output'].get(),
                 'remove_all_dups': preferences_data['remove_all_dups'].get(),
+                'scheduled_refresh': preferences_data['scheduled_refresh'].get(),
+                'offline_cache': preferences_data['offline_cache'].get(),
             })
             pref_window.destroy()
             messagebox.showinfo('Preferences', f'✓ Settings saved!\nRadio Model: {model_var.get()}\nQuality Level: {custom_var.get()}')
@@ -3096,8 +3421,10 @@ def launch_gui_and_run(default_pages, output_path):
 
     band_preview_frame = tk.LabelFrame(root, text='Band Plan Preview', padx=4, pady=4)
     band_preview_frame.grid(row=start_row+1, column=2, columnspan=2, rowspan=1, sticky='nwe', padx=4, pady=2)
-    band_preview_label = tk.Label(band_preview_frame, text='', justify='left', anchor='nw', font=('Arial', 9))
-    band_preview_label.pack(fill='both', expand=True)
+    band_preview_text = tk.Text(band_preview_frame, wrap='word', font=('Arial', 9), bg=band_preview_frame.cget('bg'), bd=0, highlightthickness=0, height=8)
+    band_preview_text.pack(fill='both', expand=False)
+    band_preview_text.insert('1.0', '')
+    band_preview_text.config(state='disabled')
 
     export_summary_frame = tk.LabelFrame(root, text='Export Summary', padx=4, pady=4)
     export_summary_frame.grid(row=start_row+2, column=2, columnspan=2, rowspan=2, sticky='nwe', padx=4, pady=2)
@@ -3132,7 +3459,6 @@ def launch_gui_and_run(default_pages, output_path):
         lines.append('')
         lines.append(f'Profile: {profile_var.get() or "None"}')
         lines.append(f'Scanner mode: {"On" if preferences_data.get("scanner_mode").get() else "Off"}')
-        band_preview_label.config(text='\n'.join(lines))
 
         summary_lines = [f'Preview Mode: {"CSV with skip flags" if preferences_data.get("preview_mode").get() else "Summary only"}', '']
         selected = get_selected_band_order()
@@ -3147,6 +3473,10 @@ def launch_gui_and_run(default_pages, output_path):
             summary_lines.append(f'Locality keywords: {", ".join(scope_keywords)}')
         elif scope_only_var.get():
             summary_lines.append('Local only enabled; no locality keywords set')
+        band_preview_text.config(state='normal')
+        band_preview_text.delete('1.0', 'end')
+        band_preview_text.insert('1.0', '\n'.join(lines))
+        band_preview_text.config(state='disabled')
         export_summary_label.config(text='\n'.join(summary_lines))
 
     def refresh_ui_state(*args):
@@ -3219,6 +3549,7 @@ def launch_gui_and_run(default_pages, output_path):
         if exporting_flag.get('running'):
             messagebox.showwarning('Export', 'An export is already running. Please wait.')
             return
+
         def cleanup_export():
             try:
                 export_btn.config(state='normal')
@@ -3235,7 +3566,6 @@ def launch_gui_and_run(default_pages, output_path):
                 pass
 
         exporting_flag['running'] = True
-        # suppress dialogs while exporting to avoid per-row popups
         try:
             _suppress_messageboxes(True)
         except Exception:
@@ -3244,572 +3574,18 @@ def launch_gui_and_run(default_pages, output_path):
             export_btn.config(state='disabled')
         except Exception:
             pass
-        pages = {}
-        # Require at least one ZIP code and one band selected
-        selected_source = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
-        scanner_mode_enabled = bool(preferences_data.get('scanner_mode').get() if preferences_data.get('scanner_mode') else 0)
-        selected_bands = [band_listbox.get(i) for i in range(band_listbox.size())]
-        zip_present = False
-        valid_location_count = 0
-        for iv in input_vars:
-            text = iv.get().strip()
-            if not text:
-                continue
-            for tok in parse_input_tokens(text):
-                if canonical_band_name(tok):
-                    continue
-                if tok.startswith('http://') or tok.startswith('https://'):
-                    valid_location_count += 1
-                    continue
-                if re.fullmatch(r'^\d{5}$', tok):
-                    zip_present = True
-                    valid_location_count += 1
-                    continue
-        if selected_source == 'Radio Browser':
-            if not zip_present:
-                messagebox.showerror('Error', 'Radio Browser source requires at least one valid ZIP code')
-                cleanup_export()
-                return
-        else:
-            if not zip_present or not any(v.get() for v in band_vars.values()):
-                messagebox.showerror('Error', 'Must have at least one ZIP code and at least one band selected')
+
+        try:
+            df, pages = build_export_dataframe(show_warnings=True)
+            if df is None or len(df) == 0:
                 cleanup_export()
                 return
 
-        if scanner_mode_enabled and selected_source != 'Radio Browser':
-            message = 'Scanner mode is enabled: NOAA channels will be exported as skipped.'
-            if profile_var.get() == 'Traveler':
-                message += ' Traveler keeps HAM and Emergency channels active while NOAA is skipped.'
-            elif profile_var.get() == 'HamScan':
-                message += ' HamScan keeps HAM channels active and skips Emergency and NOAA channels.'
-            elif profile_var.get() == 'Emergency Comms':
-                message += ' Emergency Comms keeps only Emergency channels active and skips HAM and NOAA.'
-            else:
-                message += ' On other profiles, only NOAA is skipped by default.'
-            messagebox.showinfo('Scanner mode', message)
-        if selected_source == 'Radio Browser':
-            rows_rb = []
-            unique_zips = []
-            for idx, iv in enumerate(input_vars):
-                u = iv.get().strip()
-                if not re.match(r'^\d{5}$', u):
-                    continue
-                if u not in unique_zips:
-                    unique_zips.append(u)
-                stations = get_radio_browser_broadcast_for_zip(u, limit=50)
-                if not stations:
-                    continue
-                for station in stations:
-                    rows_rb.append({
-                        'ZIP': u,
-                        'Name': station.get('name', ''),
-                        'URL': station.get('url', ''),
-                        'ResolvedURL': station.get('url_resolved', ''),
-                        'Tags': station.get('tags', ''),
-                        'Country': station.get('country', ''),
-                        'State': station.get('state', ''),
-                        'Codec': station.get('codec', ''),
-                        'Bitrate': station.get('bitrate', ''),
-                        'Language': station.get('language', ''),
-                        'LastCheck': station.get('lastchecktime', ''),
-                        'Latitude': station.get('geo_lat', ''),
-                        'Longitude': station.get('geo_long', ''),
-                    })
-            if not rows_rb:
-                messagebox.showerror('Error', 'No Radio Browser station results were found for the selected ZIPs.')
-                cleanup_export()
-                return
             try:
                 from datetime import datetime
-                default_name = 'FreqFinder_RadioBrowser_'
-                if unique_zips:
-                    default_name += '-'.join(unique_zips[:6])
-                else:
-                    default_name += 'stations'
-                default_name += '_' + datetime.now().strftime('%b%Y') + '.csv'
-            except Exception:
-                default_name = 'FreqFinder_RadioBrowser.csv'
-            initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
-            save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Save Radio Browser station CSV as')
-            if not save_path:
-                cleanup_export()
-                return
-            try:
-                df_rb = pd.DataFrame(rows_rb)
-                df_rb.to_csv(save_path, index=False)
-                messagebox.showinfo('Done', f'Wrote {len(rows_rb)} station rows to {save_path}')
-            except Exception as e:
-                messagebox.showerror('Error', f'Failed writing Radio Browser CSV: {e}')
-            return
-
-        input_band_tokens = []
-        for idx, iv in enumerate(input_vars):
-            raw_value = iv.get().strip()
-            if not raw_value:
-                continue
-            tokens = parse_input_tokens(raw_value)
-            band_tokens = [canonical_band_name(tok) for tok in tokens if canonical_band_name(tok)]
-            for band in band_tokens:
-                if band and band not in input_band_tokens:
-                    input_band_tokens.append(band)
-            for tok in tokens:
-                if tok.startswith('http://') or tok.startswith('https://'):
-                    pages[tok] = tok
-                    continue
-                if re.fullmatch(r'^\d{5}$', tok):
-                    try:
-                        pr = http_get(f'http://api.zippopotam.us/us/{tok}', timeout=6)
-                        if pr.status_code == 200:
-                            pj = pr.json()
-                            places = pj.get('places', [])
-                            if places:
-                                lat = places[0].get('latitude')
-                                lon = places[0].get('longitude')
-                                if lat and lon:
-                                    nom = http_get(
-                                        f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
-                                        headers={'User-Agent': 'chirp-scraper'},
-                                        timeout=8,
-                                    ).json()
-                                    addr = nom.get('address', {})
-                                    county = addr.get('county')
-                                    state = addr.get('state')
-                                    if county and state:
-                                        key = f"{county}, {state}".lower()
-                                        ctid = rr_index.get(key)
-                                        if ctid:
-                                            pages[f"{county}, {state}"] = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
-                                            continue
-                    except Exception:
-                        pass
-                # unsupported token is ignored
-                continue
-        if input_band_tokens:
-            current_bands = get_selected_band_order()
-            for band in input_band_tokens:
-                if band not in current_bands:
-                    current_bands.append(band)
-            set_selected_bands(current_bands, order=current_bands)
-        if not pages:
-            pages = {k: v for k, v in default_pages.items()}
-
-        save_last_user_state(profile_var.get(), [iv.get().strip() for iv in input_vars])
-
-        # selected bands in order
-        sel_bands = [band_listbox.get(i) for i in range(band_listbox.size())]
-        if not sel_bands:
-            messagebox.showerror('Error', 'Select at least one band to export')
-            cleanup_export()
-            return
-
-        # Determine selected model and customization level for filtering
-        sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
-        model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
-        model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
-        cust_level = preferences_data.get('customization_level').get() if preferences_data.get('customization_level') else 'Default'
-
-        # run scraping and filter by selected bands
-        rows = []
-        fetch_errors = []
-        # Skip showing a fetch progress window; perform fetching silently
-        fetch_total = max(1, len(pages))
-        fetch_progress = 0
-        fetch_bar = None
-        fetch_status = None
-
-        page_idx = 0
-        for c, u in pages.items():
-            try:
-                page_rows = list(fetch_freqs_for_page(u))
-                if not page_rows:
-                    fetch_errors.append((c, u, 'No repeater rows returned'))
-
-                # If the user wants Emergency rows, also fetch the paired emergency
-                # page for ZIP/CTID URLs already pointing at a ham page. Likewise,
-                # if ham/regular bands are selected and the input page is an
-                # emergency page, fetch the paired ham page.
-                if re.search(r'/(?:ctid|zip)/', u, re.I):
-                    if 'Emergency' in sel_bands and re.search(r'/ham/?$', u, re.I):
-                        emergency_url = get_rr_counterpart_page(u, 'emergency')
-                        if emergency_url != u:
-                            extra_rows = list(fetch_freqs_for_page(emergency_url))
-                            if extra_rows:
-                                page_rows.extend(extra_rows)
-                            else:
-                                fetch_errors.append((c, emergency_url, 'No repeater rows returned from emergency page'))
-                    ham_bands = {'70cm', '1.25m', '2m'}
-                    if any(b in sel_bands for b in ham_bands) and re.search(r'/emergency/?$', u, re.I):
-                        ham_url = get_rr_counterpart_page(u, 'ham')
-                        if ham_url != u:
-                            extra_rows = list(fetch_freqs_for_page(ham_url))
-                            if extra_rows:
-                                page_rows.extend(extra_rows)
-                            else:
-                                fetch_errors.append((c, ham_url, 'No repeater rows returned from ham page'))
-                for tup in page_rows:
-                    # unpack flexible return (name,freq,tone[,duplex_hint,offset_hint[,row_text]])
-                    if len(tup) >= 6:
-                        name, f, tone, duplex_hint, offset_hint, row_text = tup[0], tup[1], tup[2], tup[3], tup[4], tup[5]
-                    elif len(tup) == 5:
-                        name, f, tone, duplex_hint, offset_hint = tup[0], tup[1], tup[2], tup[3], tup[4]
-                        row_text = tup[0]
-                    else:
-                        name, f, tone = tup[0], tup[1], tup[2]
-                        duplex_hint, offset_hint = (None, None)
-                        row_text = tup[0]
-                    # determine which band this frequency belongs to
-                    band_label = None
-                    try:
-                        if 'Emergency' in sel_bands:
-                            lname_check = (row_text or name or '').lower()
-                            selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
-                            emergency_keywords = [
-                                'dispatch', 'police', 'pd', 'sheriff', 'law', 'tac', 'tactical',
-                                'fire', 'fd', 'fireground', 'fire ground', 'fire dispatch', 'fire-tac',
-                                'ems', 'ems-tac', 'ambulance', 'medical', 'emt',
-                                'emergency', 'public safety',
-                                'citywide', 'city-wide', 'city wide', 'c/w', 'cw',
-                                'mutual aid', 'operations', 'rescue', 'command', 'engine',
-                            ]
-                            if selected_emergency_types and any(kw in lname_check for kw in emergency_keywords):
-                                type_tokens = []
-                                for et in selected_emergency_types:
-                                    type_tokens.extend(EMERGENCY_TYPE_KEYWORDS.get(et, []))
-                                if any(token in lname_check for token in type_tokens):
-                                    band_label = 'Emergency'
-                            elif selected_emergency_types:
-                                for lo, hi in BAND_RANGES.get('Emergency', []):
-                                    try:
-                                        if lo <= float(f) <= hi:
-                                            band_label = 'Emergency'
-                                            break
-                                    except Exception:
-                                        continue
-
-                        if not band_label:
-                            # Prefer explicit band matches (2m/70cm/NOAA/MURS/FRS-GMRS) over Emergency fallback.
-                            for band in sel_bands:
-                                if band == 'Emergency':
-                                    continue
-                                ranges = BAND_RANGES.get(band, [])
-                                for lo, hi in ranges:
-                                    try:
-                                        if lo <= float(f) <= hi:
-                                            band_label = band
-                                            break
-                                    except Exception:
-                                        continue
-                                if band_label:
-                                    break
-                        # Emergency should only be used when no exact selected band match exists.
-                        if not band_label and 'Emergency' in sel_bands:
-                            lname = (row_text or name or '').lower()
-                            detected_protocol = None
-                            # base keywords
-                            emergency_keywords = [
-                                'dispatch', 'police', 'fire', 'fire dept', 'fire department',
-                                'sheriff', 'ems', 'ambulance', 'emergency', 'public safety',
-                                'citywide', 'city-wide', 'city wide',
-                            ]
-                            # digital protocol tokens
-                            p25_tokens = ['p25', 'project 25']
-                            edacs_tokens = ['edacs']
-                            other_digital = ['dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital']
-
-                            match = False
-                            # keyword match (loose)
-                            for kw in emergency_keywords:
-                                if kw in lname:
-                                    match = True
-                                    break
-
-                            # frequency-range match (always allowed)
-                            if not match:
-                                for lo, hi in BAND_RANGES.get('Emergency', []):
-                                    try:
-                                        if lo <= float(f) <= hi:
-                                            match = True
-                                            break
-                                    except Exception:
-                                        continue
-
-                            selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
-                            if not selected_emergency_types:
-                                match = False
-                            elif match:
-                                type_tokens = []
-                                for et in selected_emergency_types:
-                                    type_tokens.extend(EMERGENCY_TYPE_KEYWORDS.get(et, []))
-                                if not any(token in lname for token in type_tokens):
-                                    match = False
-
-                            # Advanced: tighten matching and allow P25/EDACS detection
-                            if match and cust_level in ('Advanced', 'High Quality'):
-                                if any(t in lname for t in p25_tokens):
-                                    detected_protocol = 'P25'
-                                elif any(t in lname for t in edacs_tokens):
-                                    detected_protocol = 'EDACS'
-                                if any(t in lname for t in other_digital) and not model_obj.get('supports_digital_mode'):
-                                    match = False
-
-                            if detected_protocol:
-                                if detected_protocol == 'P25' and not model_obj.get('supports_p25'):
-                                    match = False
-                                if detected_protocol == 'EDACS' and not model_obj.get('supports_edacs'):
-                                    match = False
-
-                            if match:
-                                band_label = 'Emergency'
-                                if detected_protocol:
-                                    name = f"{name} [{detected_protocol}]"
-                    except Exception:
-                        pass
-                    if not band_label:
-                        continue
-                    if band_label == 'Emergency' and not is_analog_emergency_channel(name, row_text, c):
-                        continue
-                    rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint, 'RawText': row_text})
-            except Exception as exc:
-                fetch_errors.append((c, u, str(exc)))
-
-        if fetch_errors:
-            warning_text = 'Some RadioReference pages could not be fetched or parsed.\n'
-            warning_text += 'Only fixed-band NOAA/MURS/FRS-GMRS rows may be available.\n\n'
-            warning_text += '\n'.join(f'{label}: {err}' for label, _, err in fetch_errors[:5])
-            if len(fetch_errors) > 5:
-                warning_text += f'\n...and {len(fetch_errors)-5} more.'
-            try:
-                messagebox.showwarning('RadioReference fetch warning', warning_text)
-            except Exception:
-                print(warning_text)
-        
-        # update fetch progress after each page processed
-        try:
-            page_idx += 1
-            # no fetch progress UI when running silently
-            pass
-        except Exception:
-            pass
-
-        # If NOAA band selected, include NOAA weather frequencies from CSV
-        if 'NOAA' in sel_bands:
-            for entry in NOAA_FREQS:
-                name, f, tone, raw = entry
-                rows.append({'Name': name or f'NOAA {f}', 'Frequency': f, 'Duplex': '', 'Tone': tone or '', 'Comment': 'Weather', 'Band': 'NOAA'})
-
-        # If MURS selected, include fixed MURS channels from CSV
-        if 'MURS' in sel_bands:
-            for entry in MURS_FREQS:
-                name, f, tone, raw = entry
-                rows.append({'Name': name or f'MURS {f}', 'Frequency': f, 'Duplex': '', 'Tone': tone or '', 'Comment': 'MURS', 'Band': 'MURS'})
-
-        # If FRS/GMRS selected, include fixed channels from CSV
-        if 'FRS/GMRS' in sel_bands:
-            for entry in FRS_GMRS_FREQS:
-                name, f, duplex, tone, raw = entry
-                rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
-
-        # sort rows by band order then numeric frequency
-        def numeric_frequency(value):
-            try:
-                return float(value)
-            except Exception:
-                return 0.0
-
-        band_order = {b: i for i, b in enumerate(sel_bands)}
-        scope_keywords = get_scope_keywords()
-        def locality_priority(row):
-            if not scope_keywords:
-                return 0
-            text = ' '.join([str(row.get('Name', '')), str(row.get('Comment', ''))]).lower()
-            score = sum(1 for tok in scope_keywords if tok in text)
-            return -score
-
-        if scope_only_var.get() and scope_keywords:
-            rows = [r for r in rows if locality_priority(r) < 0]
-
-        selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
-        # preserve all Emergency channels when Emergency band is selected
-        # rows = limit_emergency_channels(rows, selected_emergency_types, locality_priority, numeric_frequency)
-
-        rows.sort(key=lambda r: (band_order.get(r.get('Band'), 999), locality_priority(r), numeric_frequency(r.get('Frequency', 0))))
-
-        # remove duplicate rows from merged sources (Emergency/NOAA/repeaters) before export
-        deduped = []
-        seen_keys = set()
-        for r in rows:
-            key = (
-                r.get('Band', ''),
-                str(r.get('Frequency', '')).strip(),
-                (r.get('Name') or '').strip().lower(),
-                (r.get('Tone') or '').strip(),
-                (r.get('Duplex') or '').strip(),
-                (r.get('Offset') or '').strip(),
-            )
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            deduped.append(r)
-        rows = deduped
-
-        # build CHIRP-like CSV with proper repeater handling (duplex/offset/tone)
-        def compute_offset_local(freq):
-            try:
-                f = float(freq)
-            except Exception:
-                return ''
-            if f >= 420.0:
-                return '5.000'
-            if 144.0 <= f < 148.0:
-                return '0.600'
-            return ''
-
-        def parse_tone_local(tone_text):
-            if not tone_text or not str(tone_text).strip():
-                return ('', '', '')
-            t = str(tone_text).strip()
-            if t.upper() == 'CSQ':
-                return ('', '', '')
-            m = re.search(r"([0-9]+\.?[0-9]*)", t)
-            if m:
-                try:
-                    valf = float(m.group(1))
-                except Exception:
-                    return ('', '', '')
-                # accept only plausible CTCSS tone frequencies
-                if not (50.0 <= valf <= 260.0):
-                    return ('', '', '')
-                val = f"{valf:.1f}"
-                return ('Tone', val, val)
-            return ('', '', '')
-
-        # Determine selected model object for compatibility filtering
-        sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
-        model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
-        model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
-
-        df_rows = []
-        for r in rows:
-            name = r.get('Name','')
-            freq = r.get('Frequency','')
-            band = r.get('Band','')
-            # Determine duplex: use frequency heuristic (>=147 -> +) rather than a 'Repeaters' band
-            duplex = '+' if (isinstance(freq, (int,float)) and freq >= 147) else '-' if isinstance(freq, (int,float)) and freq < 147 else ''
-            offset = compute_offset_local(freq) if duplex == '+' else ''
-            tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
-            dtcs = '023' if rTone else ''
-            dtcs_pol = 'NN' if rTone else ''
-            # Preserve amateur and emergency frequencies even when a tone is not present.
-            # Fixed band lists still remain exempt from the tone requirement.
-            if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS', '2m', '70cm', 'Emergency'):
-                continue
-            # For Emergency entries, allow P25/EDACS when supported and when in Advanced quality;
-            # allow analog emergency channels even without tone. Filter other digital types unless model supports them.
-            if band == 'Emergency':
-                lname = (name or '').lower()
-                # If annotated with detected protocol (from earlier), respect it
-                protocol = None
-                m = re.search(r'\[(P25|EDACS)\]$', name)
-                if m:
-                    protocol = m.group(1)
-                # If protocol present, ensure model supports it and that advanced quality is selected
-                if protocol:
-                    if cust_level not in ('Advanced', 'High Quality'):
-                        continue
-                    if protocol == 'P25' and not model_obj.get('supports_p25'):
-                        continue
-                    if protocol == 'EDACS' and not model_obj.get('supports_edacs'):
-                        continue
-                else:
-                    # no explicit protocol: if entry references other digital trunking (DMR/NXDN/etc), allow only when model has digital support and advanced quality
-                    other_digital = ('dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital')
-                    if any(d in lname for d in other_digital):
-                        if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
-                            continue
-            skip_value = ''
-            if band == 'NOAA':
-                skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'Traveler':
-                # Traveler scans HAM and Emergency channels, so only NOAA remains skipped.
-                skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'Emergency Comms' and band in ('70cm', '1.25m', '2m'):
-                # In Emergency profile, HAM bands are skipped so only Emergency channels scan.
-                skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'HamScan' and band == 'Emergency':
-                skip_value = 'S'
-            df_rows.append({
-                'Name': name,
-                'Frequency': freq,
-                'Duplex': duplex,
-                'Offset': offset,
-                'Tone': tone_label,
-                'rToneFreq': rTone,
-                'cToneFreq': cTone,
-                'DtcsCode': dtcs,
-                'DtcsPolarity': dtcs_pol,
-                'Mode': 'FM',
-                'TStep': 5,
-                'Skip': skip_value,
-                'Comment': r.get('Comment','')
-            })
-
-        # Create progress window
-        progress_window = tk.Toplevel(root)
-        progress_window.title('Exporting CSV')
-        progress_window.geometry('400x120')
-        progress_window.resizable(False, False)
-        progress_window.transient(root)
-
-        center_and_clamp(progress_window, 400, 120)
-
-        progress_label = tk.Label(progress_window, text='Processing and building CSV...', wraplength=380)
-        progress_label.pack(pady=10)
-
-        progress_bar = ttk.Progressbar(progress_window, mode='indeterminate', length=360)
-        progress_bar.pack(pady=10, padx=20)
-        progress_bar.start()
-
-        progress_status = tk.Label(progress_window, text='', font=('Arial', 9))
-        progress_status.pack(pady=5)
-
-        def update_progress(msg):
-            progress_status.config(text=msg)
-            progress_window.update()
-        
-        try:
-            import pandas as pd
-            update_progress('Building DataFrame...')
-            outdf = pd.DataFrame(df_rows)
-            # ensure columns
-            cols = ["Name","Frequency","Duplex","Offset","Tone","rToneFreq","cToneFreq","DtcsCode","DtcsPolarity","Mode","TStep","Skip","Comment"]
-            for c in cols:
-                if c not in outdf.columns:
-                    outdf[c] = ''
-            outdf = outdf[cols]
-            outdf.index = [f"{i:03d}" for i in range(2, len(outdf)+2)]
-            outdf.index.name = 'Location'
-            
-            update_progress(f'Preparing {len(outdf)} rows...')
-            
-            # Store data for Save As functionality
-            exported_data['dataframe'] = outdf
-            exported_data['row_count'] = len(outdf)
-            exported_data['pages'] = pages
-            
-            # Ask user where to save the CSV
-            progress_bar.stop()
-            progress_label.config(text='Choose save location...')
-            progress_window.update()
-
-            # Build sensible default filename: Chirp_$Model_$Zipcode[#]_$Month
-            try:
-                from datetime import datetime
-                import csv as _csv
-                # model
                 model_raw = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
                 model_s = re.sub(r'[^A-Za-z0-9]+', '_', model_raw).strip('_') or 'Model'
 
-                # try to find zip codes in pages labels/urls
                 zip_candidates = []
                 for k, v in pages.items():
                     m1 = re.search(r"(\d{5})", str(k))
@@ -3822,75 +3598,28 @@ def launch_gui_and_run(default_pages, output_path):
                 for z in zip_candidates:
                     if z not in unique_zips:
                         unique_zips.append(z)
-                if unique_zips:
-                    if len(unique_zips) <= 6:
-                        zip_part = '-'.join(unique_zips)
-                    else:
-                        zip_part = f"{unique_zips[0]}[{len(unique_zips)}]"
-                else:
-                    # fallback to first page label sanitized
-                    first_label = next(iter(pages.keys()), 'Location')
-                    zip_part = re.sub(r'[^A-Za-z0-9]+', '_', first_label).strip('_')
-
-                month_part = datetime.now().strftime('%b%Y')
-                default_name = f"FreqFinder_{model_s}_{zip_part}_{month_part}.csv"
+                default_name = _get_default_export_filename_with_pages(pages)
             except Exception:
-                default_name = output_path or 'chirp_output.csv'
+                default_name = 'chirp_output.csv'
 
             initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
             save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Save CSV as')
             if not save_path:
-                progress_window.destroy()
+                cleanup_export()
                 return
 
-            # Write CSV row-by-row so we can show determinate progress
-            try:
-                import csv as _csv
-                total = len(outdf)
-                progress_bar.config(mode='determinate', maximum=total, value=0)
-                update_progress(f'Writing 0/{total} rows...')
-                # write with explicit Location column (index)
-                fieldnames = ['Location'] + list(outdf.columns)
-                with open(save_path, 'w', newline='', encoding='utf-8') as wf:
-                    writer = _csv.DictWriter(wf, fieldnames=fieldnames)
-                    writer.writeheader()
-                    i = 0
-                    out_cols = list(outdf.columns)
-                    for i, row_tup in enumerate(outdf.itertuples(index=True, name=None), start=1):
-                        rec = {'Location': row_tup[0]}
-                        for c, v in zip(out_cols, row_tup[1:]):
-                            rec[c] = v
-                        writer.writerow(rec)
-                        progress_bar['value'] = i
-                        update_progress(f'Writing {i}/{total} rows...')
-                progress_window.destroy()
-                exported_data['last_export_path'] = save_path
-                update_status_bar(exported_rows=total, profile_name=profile_var.get(), last_path=save_path)
-                messagebox.showinfo('Done', f'Wrote {total} rows to {save_path}')
-            except Exception as e:
-                progress_window.destroy()
-                messagebox.showerror('Error', f'Failed writing CSV: {e}')
+            write_export_csv(save_path, df)
+            exported_data['last_export_path'] = save_path
+            update_status_bar(exported_rows=len(df), profile_name=profile_var.get(), last_path=save_path)
+            stats_text = exported_data.get('export_stats', '')
+            done_text = f'Wrote {len(df)} rows to {save_path}'
+            if stats_text:
+                done_text = f'{done_text}\n\nExport summary:\n{stats_text}'
+            messagebox.showinfo('Done', done_text)
         except Exception as e:
-            try:
-                progress_window.destroy()
-            except Exception:
-                pass
-            messagebox.showerror('Error', f'Failed to export CSV: {e}')
+            messagebox.showerror('Export', f'Failed to export CSV: {e}')
         finally:
-            # restore messagebox behavior and flush any queued dialogs
-            try:
-                _suppress_messageboxes(False)
-            except Exception:
-                pass
-            try:
-                _flush_dialog_queue()
-            except Exception:
-                pass
-            exporting_flag['running'] = False
-            try:
-                export_btn.config(state='normal')
-            except Exception:
-                pass
+            cleanup_export()
 
     def build_export_dataframe(show_warnings=True):
         selected_source = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
@@ -3954,53 +3683,25 @@ def launch_gui_and_run(default_pages, output_path):
                 return None, None
 
         input_band_tokens = []
+        page_entries = []
         for idx, iv in enumerate(input_vars):
             raw_value = iv.get().strip()
             if not raw_value:
                 continue
             tokens = parse_input_tokens(raw_value)
-            band_tokens = [canonical_band_name(tok) for tok in tokens if canonical_band_name(tok)]
+            band_tokens = expand_band_tokens(tokens)
             for band in band_tokens:
                 if band and band not in input_band_tokens:
                     input_band_tokens.append(band)
-            for tok in tokens:
-                if tok.startswith('http://') or tok.startswith('https://'):
-                    pages[tok] = tok
-                    continue
-                if re.fullmatch(r'^\d{5}$', tok):
-                    try:
-                        pr = http_get(f'http://api.zippopotam.us/us/{tok}', timeout=6)
-                        if pr.status_code == 200:
-                            pj = pr.json()
-                            places = pj.get('places', [])
-                            if places:
-                                lat = places[0].get('latitude')
-                                lon = places[0].get('longitude')
-                                if lat and lon:
-                                    nom = http_get(
-                                        f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}',
-                                        headers={'User-Agent': 'chirp-scraper'},
-                                        timeout=8,
-                                    ).json()
-                                    addr = nom.get('address', {})
-                                    county = addr.get('county')
-                                    state = addr.get('state')
-                                    if county and state:
-                                        key = f"{county}, {state}".lower()
-                                        ctid = rr_index.get(key)
-                                        if ctid:
-                                            pages[f"{county}, {state}"] = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
-                                            continue
-                    except Exception:
-                        pass
-                # unsupported token is ignored
-                continue
+            page_entries.extend(build_radioreference_page_entries(tokens, rr_index))
         if input_band_tokens:
             current_bands = get_selected_band_order()
             for band in input_band_tokens:
                 if band not in current_bands:
                     current_bands.append(band)
             set_selected_bands(current_bands, order=current_bands)
+        if page_entries:
+            pages = {label: url for label, url, _ in page_entries}
         if not pages:
             pages = {k: v for k, v in default_pages.items()}
 
@@ -4015,15 +3716,23 @@ def launch_gui_and_run(default_pages, output_path):
         sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
         model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
         model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
+        max_channels = model_obj.get('max_channels')
         cust_level = preferences_data.get('customization_level').get() if preferences_data.get('customization_level') else 'Default'
 
         rows = []
         fetch_errors = []
-        for c, u in pages.items():
+        if not page_entries:
+            page_entries = [(label, url, None) for label, url in pages.items()]
+        page_results = []
+        for label, u, zip_code in page_entries:
             try:
                 page_rows = list(fetch_freqs_for_page(u))
+                if not page_rows and zip_code:
+                    zip_search = f'https://www.radioreference.com/db/search/?zip={zip_code}'
+                    page_rows = list(fetch_freqs_for_page(zip_search))
                 if not page_rows:
-                    fetch_errors.append((c, u, 'No repeater rows returned'))
+                    fetch_errors.append((label, u, 'No repeater rows returned'))
+                filtered_rows = []
                 for tup in page_rows:
                     if len(tup) >= 6:
                         name, f, tone, duplex_hint, offset_hint, row_text = tup[0], tup[1], tup[2], tup[3], tup[4], tup[5]
@@ -4101,8 +3810,8 @@ def launch_gui_and_run(default_pages, output_path):
 
                             selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
                             if not selected_emergency_types:
-                                match = False
-                            elif match:
+                                selected_emergency_types = list(EMERGENCY_TYPE_KEYWORDS.keys())
+                            if match:
                                 type_tokens = []
                                 for et in selected_emergency_types:
                                     type_tokens.extend(EMERGENCY_TYPE_KEYWORDS.get(et, []))
@@ -4131,11 +3840,33 @@ def launch_gui_and_run(default_pages, output_path):
                         pass
                     if not band_label:
                         continue
-                    if band_label == 'Emergency' and not is_analog_emergency_channel(name, row_text, c):
+                    if band_label == 'Emergency' and not is_analog_emergency_channel(name, row_text, label):
                         continue
-                    rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': c, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint, 'RawText': row_text})
+                    filtered_rows.append({'Name': name, 'Frequency': f, 'Duplex': None, 'Tone': tone, 'Comment': label, 'Band': band_label, 'duplex_hint': duplex_hint, 'offset_hint': offset_hint, 'RawText': row_text})
+                page_results.append({'zip': zip_code, 'label': label, 'rows': filtered_rows})
             except Exception as exc:
-                fetch_errors.append((c, u, str(exc)))
+                fetch_errors.append((label, u, str(exc)))
+
+        rows = []
+        zip_order = []
+        zip_rows = {}
+        for pr in page_results:
+            if pr['zip'] is None:
+                continue
+            if pr['zip'] not in zip_rows:
+                zip_rows[pr['zip']] = []
+                zip_order.append(pr['zip'])
+            zip_rows[pr['zip']].extend(pr['rows'])
+
+        if max_channels and zip_order:
+            reserved_noaa = 10
+            remaining_slots = max(max_channels - reserved_noaa, 0)
+            rows.extend(select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order))
+            for pr in page_results:
+                if pr['zip'] is None:
+                    rows.extend(pr['rows'])
+        else:
+            rows = [row for pr in page_results for row in pr['rows']]
 
         if fetch_errors and show_warnings:
             warning_text = 'Some RadioReference pages could not be fetched or parsed.\n'
@@ -4160,6 +3891,18 @@ def launch_gui_and_run(default_pages, output_path):
                 name, f, duplex, tone, raw = entry
                 rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
 
+        if model_obj.get('frequency_ranges'):
+            original_count = len(rows)
+            rows = [r for r in rows if model_supports_frequency(model_obj, r.get('Frequency', ''))]
+            if show_warnings and len(rows) != original_count:
+                removed = original_count - len(rows)
+                messagebox.showwarning(
+                    'Model Frequency Filter',
+                    f'{removed} channel(s) were removed because they are outside the selected model ({model_obj.get("name")}) frequency range.'
+                )
+
+        rows = _dedupe_export_rows(rows)
+
         def numeric_frequency(value):
             try:
                 return float(value)
@@ -4167,8 +3910,6 @@ def launch_gui_and_run(default_pages, output_path):
                 return 0.0
 
         selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
-        # preserve all Emergency channels when Emergency band is selected
-        # rows = limit_emergency_channels(rows, selected_emergency_types, lambda r: 0, numeric_frequency)
 
         band_order = {b: i for i, b in enumerate(sel_bands)}
         rows.sort(key=lambda r: (band_order.get(r.get('Band'), 999), numeric_frequency(r.get('Frequency', 0))))
@@ -4212,16 +3953,17 @@ def launch_gui_and_run(default_pages, output_path):
                 try:
                     valf = float(m.group(1))
                 except Exception:
-                    return (t, '0.0', '0.0')
+                    return ('', '0.0', '0.0')
                 if not (50.0 <= valf <= 260.0):
-                    return (t, '0.0', '0.0')
+                    return ('', '0.0', '0.0')
                 val = f"{valf:.1f}"
                 return ('Tone', val, val)
-            return (t, '0.0', '0.0')
+            return ('', '0.0', '0.0')
 
         df_rows = []
         for r in rows:
             name = r.get('Name','')
+            raw_text = r.get('RawText','') or ''
             freq = r.get('Frequency','')
             band = r.get('Band','')
             duplex = '+' if (isinstance(freq, (int,float)) and freq >= 147) else '-' if isinstance(freq, (int,float)) and freq < 147 else ''
@@ -4229,8 +3971,20 @@ def launch_gui_and_run(default_pages, output_path):
             tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
             dtcs = '023' if rTone else ''
             dtcs_pol = 'NN' if rTone else ''
-            if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS', '2m', '70cm', 'Emergency'):
+            if not rTone and band not in ('NOAA', 'MURS', 'FRS/GMRS', '2m', '70cm', '1.25m', 'Emergency'):
                 continue
+            if raw_text and raw_text not in name and (not name or len(name) <= 4):
+                name = f"{name} {raw_text}".strip()
+            comment = r.get('Comment','')
+            band_display = band
+            if band in ('2m', '70cm', '1.25m'):
+                band_display = 'Ham'
+            if band and comment:
+                comment = f"[{band_display}] {comment}"
+            elif band:
+                comment = f"[{band_display}]"
+            if raw_text and raw_text not in comment and raw_text not in name:
+                comment = f"{comment} | {raw_text}".strip(' |')
             if band == 'Emergency':
                 lname = (name or '').lower()
                 protocol = None
@@ -4250,15 +4004,11 @@ def launch_gui_and_run(default_pages, output_path):
                         if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
                             continue
             skip_value = ''
-            if band == 'NOAA':
+            if scanner_mode_enabled and profile_var.get() == 'HamScan' and band in ('Emergency', 'NOAA'):
                 skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'Traveler':
-                # Traveler scans HAM and Emergency channels, so only NOAA remains skipped.
+            elif scanner_mode_enabled and profile_var.get() == 'Emergency Comms' and band in ('2m', '70cm', '1.25m', 'NOAA'):
                 skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'Emergency Comms' and band in ('70cm', '1.25m', '2m'):
-                # In Emergency profile, HAM bands are skipped so only Emergency channels scan.
-                skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'HamScan' and band == 'Emergency':
+            elif scanner_mode_enabled and profile_var.get() == 'Traveler' and band == 'NOAA':
                 skip_value = 'S'
             df_rows.append({
                 'Name': name,
@@ -4273,12 +4023,14 @@ def launch_gui_and_run(default_pages, output_path):
                 'Mode': 'FM',
                 'TStep': preferences_data.get('step_size').get() if preferences_data.get('step_size') else 5,
                 'Skip': skip_value,
-                'Comment': r.get('Comment','')
+                'Comment': comment,
+                'Band': band,
             })
 
         try:
             import pandas as pd
             outdf = pd.DataFrame(df_rows)
+            stats_df = outdf.copy()
             cols = ["Name","Frequency","Duplex","Offset","Tone","rToneFreq","cToneFreq","DtcsCode","DtcsPolarity","Mode","TStep","Skip","Comment"]
             for c in cols:
                 if c not in outdf.columns:
@@ -4286,11 +4038,20 @@ def launch_gui_and_run(default_pages, output_path):
             outdf = outdf[cols]
             outdf.index = [f"{i:03d}" for i in range(2, len(outdf)+2)]
             outdf.index.name = 'Location'
+            exported_data['export_stats'] = _format_export_statistics(stats_df)
             exported_data['dataframe'] = outdf
             exported_data['row_count'] = len(outdf)
             exported_data['pages'] = pages
-            warn_limit_enabled = APP_SETTINGS.get('warn_channel_limit', {}).get('value', APP_SETTINGS.get('warn_channel_limit', {}).get('default', False))
             max_channels = model_obj.get('max_channels')
+            if max_channels and len(outdf) > max_channels:
+                if show_warnings:
+                    messagebox.showerror(
+                        'Channel Capacity Exceeded',
+                        f'The export contains {len(outdf)} channels, which exceeds the selected radio model\'s capacity of {max_channels} channels.\n'
+                        'Reduce the selected bands, locations, or choose a higher-capacity radio model before exporting.'
+                    )
+                return None, None
+            warn_limit_enabled = APP_SETTINGS.get('warn_channel_limit', {}).get('value', APP_SETTINGS.get('warn_channel_limit', {}).get('default', False))
             if warn_limit_enabled and max_channels and len(outdf) > max_channels:
                 if show_warnings:
                     messagebox.showwarning(
@@ -4343,11 +4104,35 @@ def launch_gui_and_run(default_pages, output_path):
         text_frame = tk.Frame(preview_win)
         text_frame.pack(fill='both', expand=True)
 
+        xscrollbar = ttk.Scrollbar(text_frame, orient='horizontal')
+        xscrollbar.pack(side='bottom', fill='x')
         scrollbar = ttk.Scrollbar(text_frame, orient='vertical')
         scrollbar.pack(side='right', fill='y')
-        txt = tk.Text(text_frame, wrap='none', yscrollcommand=scrollbar.set, font=('Courier', 10))
+        txt = tk.Text(text_frame, wrap='none', yscrollcommand=scrollbar.set, xscrollcommand=xscrollbar.set, font=('Courier', 10))
         txt.pack(side='left', fill='both', expand=True)
         scrollbar.config(command=txt.yview)
+        xscrollbar.config(command=txt.xview)
+
+        def _preview_mousewheel(event):
+            delta = 0
+            if hasattr(event, 'delta') and event.delta:
+                delta = int(event.delta / 120)
+            elif event.num == 4:
+                delta = 1
+            elif event.num == 5:
+                delta = -1
+            if event.state & 0x0001:  # Shift held
+                txt.xview_scroll(-delta, 'units')
+            else:
+                txt.yview_scroll(-delta, 'units')
+            return 'break'
+
+        txt.bind('<MouseWheel>', _preview_mousewheel)
+        txt.bind('<Shift-MouseWheel>', _preview_mousewheel)
+        txt.bind('<Button-4>', _preview_mousewheel)
+        txt.bind('<Button-5>', _preview_mousewheel)
+        txt.bind('<Shift-Button-4>', _preview_mousewheel)
+        txt.bind('<Shift-Button-5>', _preview_mousewheel)
 
         try:
             preview_text = df.to_string(max_rows=200, max_cols=12)
@@ -4381,8 +4166,10 @@ def launch_gui_and_run(default_pages, output_path):
                 save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile='FreqFinder_Preview.csv', title='Save Preview CSV as')
                 if not save_path:
                     return
-                df.to_csv(save_path, index=True)
+                write_export_csv(save_path, df)
+                exported_data['preview_csv_path'] = save_path
                 messagebox.showinfo('Saved', f'Preview CSV saved to {save_path}')
+                verify_export_file_hashes()
             except Exception as e:
                 messagebox.showerror('Error', f'Failed saving preview CSV: {e}')
 
@@ -4407,7 +4194,7 @@ def launch_gui_and_run(default_pages, output_path):
         if default_path and os.path.isdir(os.path.dirname(default_path)):
             save_path = default_path
         else:
-            default_name = 'FreqFinder_QuickExport.csv'
+            default_name = _get_quick_export_default_filename()
             initial_dir = DEFAULT_SAVE_DIR if os.path.isdir(DEFAULT_SAVE_DIR) else None
             save_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV files','*.csv'),('All files','*.*')], initialdir=initial_dir, initialfile=default_name, title='Quick Export CSV as')
             if not save_path:
@@ -4415,20 +4202,12 @@ def launch_gui_and_run(default_pages, output_path):
 
         try:
             outdf = exported_data['dataframe']
-            import csv as _csv
-            fieldnames = ['Location'] + list(outdf.columns)
-            with open(save_path, 'w', newline='', encoding='utf-8') as wf:
-                writer = _csv.DictWriter(wf, fieldnames=fieldnames)
-                writer.writeheader()
-                out_cols = list(outdf.columns)
-                for row_tup in outdf.itertuples(index=True, name=None):
-                    rec = {'Location': row_tup[0]}
-                    for c, v in zip(out_cols, row_tup[1:]):
-                        rec[c] = v
-                    writer.writerow(rec)
+            write_export_csv(save_path, outdf)
+            exported_data['quick_export_path'] = save_path
             exported_data['last_export_path'] = save_path
             update_status_bar(exported_rows=len(outdf), profile_name=profile_var.get(), last_path=save_path)
             messagebox.showinfo('Quick Export', f'Wrote {len(outdf)} rows to {save_path}')
+            verify_export_file_hashes()
         except Exception as e:
             messagebox.showerror('Quick Export', f'Failed to save quick export: {e}')
 
@@ -4697,7 +4476,33 @@ def main():
             print('No Radio Browser rows to write.')
         return
 
-    if args.include_broadcast and args.pages:
+    explicit_cli = bool(
+        args.pages or args.prompt or args.qrz_stub or args.source == 'radio_browser' or args.include_broadcast
+    )
+
+    if args.gui:
+        try:
+            launch_gui_and_run(DEFAULT_PAGES, args.output)
+            return
+        except Exception as e:
+            print(f'GUI startup failed ({e}); exiting. Use --pages to run in CLI mode explicitly.')
+            return
+
+    if gui_session_available():
+        try:
+            launch_gui_and_run(DEFAULT_PAGES, args.output)
+            return
+        except Exception as e:
+            if explicit_cli:
+                print(f'GUI startup failed ({e}); running in CLI mode')
+            else:
+                print(f'GUI startup failed ({e}); exiting because no CLI request was made.')
+                return
+    else:
+        if not explicit_cli:
+            print('GUI not available: tkinter is not installed in this Python environment; no CLI request was provided. Exiting.')
+            return
+        print('GUI not available: tkinter is not installed in this Python environment; running in CLI mode')
         found_any = False
         for token in args.pages:
             if re.fullmatch(r'\d{5}', token):

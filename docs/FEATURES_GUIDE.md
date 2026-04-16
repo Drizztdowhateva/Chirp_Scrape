@@ -284,6 +284,7 @@ Need help?
 - **GitHub Issues**: Help → Contact → GitHub Project
 - **Documentation**: Help → How-To
 - **Donations**: Help → Contact → Donations (Support the developer!)
+- **Social Links**: More project social media channels will be added in future releases.
 
 ---
 

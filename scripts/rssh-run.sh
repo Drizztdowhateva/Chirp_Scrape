@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Remote SSH helper for ChirpScrape local dev build/run
+# Remote SSH helper for FreqFinder local dev build/run
 # Usage:
-#   ./scripts/rssh-run.sh user@host /path/to/Chirp_Scrape
+#   ./scripts/rssh-run.sh user@host /path/to/FreqFinder
 
 if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 user@host /path/to/Chirp_Scrape"
+  echo "Usage: $0 user@host /path/to/FreqFinder"
   exit 1
 fi
 

@@ -103,10 +103,10 @@ Coming in future releases:
 
 ## 📞 Support & Feedback
 
-- 🐛 Found a bug? [Report on GitHub](https://github.com/Drizztdowhateva/Chirp_Scrape)
+- 🐛 Found a bug? [Report on GitHub](https://github.com/Drizztdowhateva/FreqFinder)
 - 💡 Have a feature request? Create an issue on GitHub
 - 💬 Need help? Check the Getting Started guide (Help menu)
-- 💝 Support development via [Donations](https://github.com/Drizztdowhateva/Chirp_Scrape)
+- 💝 Support development via [Donations](https://github.com/Drizztdowhateva/FreqFinder)
 
 ---
 
@@ -124,5 +124,5 @@ Coming in future releases:
 ---
 
 **© 2026 Tim Rohe**  
-**Repository**: [FreqFinder](https://github.com/Drizztdowhateva/Chirp_Scrape)  
+**Repository**: [FreqFinder](https://github.com/Drizztdowhateva/FreqFinder)  
 **Questions?** Email: trstechie@gmail.com

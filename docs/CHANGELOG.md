@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved donation dialog initialization (500ms delay for proper focus)
 - Enhanced donation portal with professional typography and styling
 - Better text wrapping and spacing in donation content
+- Documentation cleanup for licensing, donations, and help/support copy
 
 ### Fixed
 - Donation dialog no longer hides behind main window on startup
@@ -274,4 +275,4 @@ See LICENSE file for details.
 
 **Last Updated**: February 4, 2026  
 **Maintainer**: Tim Rohe (trstechie@gmail.com)  
-**Repository**: [FreqFinder](https://github.com/Drizztdowhateva/Chirp_Scrape)
+**Repository**: [FreqFinder](https://github.com/Drizztdowhateva/FreqFinder)

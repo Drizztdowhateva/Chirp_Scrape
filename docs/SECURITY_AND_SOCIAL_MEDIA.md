@@ -248,7 +248,7 @@ SOCIAL_SETTINGS = {
 ## 📞 Security Contact & Reporting
 
 **Security Issues**: contact@example.com  
-**Public Issues**: [GitHub Issues](https://github.com/Drizztdowhateva/Chirp_Scrape)  
+**Public Issues**: [GitHub Issues](https://github.com/Drizztdowhateva/FreqFinder)  
 **PGP Key**: Available on request  
 
 **Responsible Disclosure Policy**:

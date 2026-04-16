@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Run FreqFinder from the repository root.
 # If needed, this script creates a local virtualenv and installs dependencies.
+# The requirement file now pins pip==26.0.1, so the launcher will install that version.
 
 cd "$(dirname "$0")"
 
