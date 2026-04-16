@@ -188,7 +188,7 @@ Developing and maintaining open source software takes significant time and resou
 
 **🎁 Donation Portal**: A professional donation page appears on first launch. You can always reopen it from **Help → Contact → Donations** in the app menu.
 
-**Note:** More payment and social media support links will be added in future releases.
+**Note:** Donations are currently supported via PayPal and Cash App only.
 
 ### Why Donate? 💡
 - Open source software fosters innovation and collaboration.

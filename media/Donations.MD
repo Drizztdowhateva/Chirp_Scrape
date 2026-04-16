@@ -4,6 +4,8 @@
 
 Developing software requires significant time and resources ⏰. Your donations 💰 help cover the hours spent coding, testing, and maintaining projects, as well as the costs of expensive accounts and services needed for deployment, hosting, and integrations ☁️.
 
+Donations are currently accepted via PayPal and Cash App only.
+
 Without support from the community 👥, it's challenging to sustain open-source projects and continue delivering valuable tools 🔧. Every contribution makes a difference in keeping development alive and improving software for everyone 🌍.
 
 Thank you for considering a donation! 🙏

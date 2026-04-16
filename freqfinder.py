@@ -67,6 +67,24 @@ import os
 import time
 import argparse
 
+# Application version is read from setup.py if available.
+
+def get_app_version():
+    version = '0.1.0'
+    try:
+        setup_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setup.py')
+        if os.path.exists(setup_path):
+            with open(setup_path, 'r', encoding='utf-8') as fp:
+                text = fp.read()
+            match = re.search(r"version\s*=\s*['\"]([^'\"]+)['\"]", text)
+            if match:
+                version = match.group(1)
+    except Exception:
+        pass
+    return version
+
+APP_VERSION = get_app_version()
+
 # Import dependencies after bootstrapping
 import requests
 import pandas as pd
@@ -357,8 +375,10 @@ BAND_RANGES = {
 }
 
 PAGE_BAND_GROUPS = [
-    ('2m / 1.25m / 70cm', ['70cm', '1.25m', '2m']),
-    ('NOAA / MURS / FRS-GMRS', ['NOAA', 'MURS', 'FRS/GMRS']),
+    ('Zip Code Freq Finder', []),
+    ('AM', ['70cm', '1.25m', '2m']),
+    ('NOAA/MURS', ['NOAA', 'MURS']),
+    ('FRS-GMRS', ['FRS/GMRS']),
     ('Emergency', ['Emergency']),
 ]
 
@@ -403,10 +423,13 @@ def emergency_row_type(row):
     return None
 
 
-def select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order=None):
+def select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order=None, prioritize_quality=False):
     """Select rows across ZIPs using proportional allocation by available rows."""
     if not zip_rows or remaining_slots <= 0:
         return []
+    if prioritize_quality:
+        for zip_code, rows in zip_rows.items():
+            zip_rows[zip_code] = sorted(rows, key=_row_score, reverse=True)
     zip_counts = {zip_code: len(rows) for zip_code, rows in zip_rows.items()}
     total_rows = sum(zip_counts.values())
     if total_rows <= 0:
@@ -2598,7 +2621,7 @@ def launch_gui_and_run(default_pages, output_path):
         source_combo = ttk.Combobox(radio_scrollable_frame, textvariable=source_var, state='readonly', width=40)
         source_combo['values'] = ['RadioReference', 'Radio Browser']
         source_combo.pack(fill='x', padx=10, pady=(5, 10))
-        source_desc_var = tk.StringVar(value='Choose RadioReference for repeater frequencies, or Radio Browser for public broadcast station metadata.')
+        source_desc_var = tk.StringVar(value='Choose RadioReference for repeater/emergency exports or Radio Browser for FM broadcast programming.')
         source_desc_label = tk.Label(radio_scrollable_frame, textvariable=source_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
         source_desc_label.pack(anchor='w', padx=10, pady=(0, 15))
 
@@ -2930,37 +2953,63 @@ def launch_gui_and_run(default_pages, output_path):
     root.geometry('1100x700')
     root.resizable(True, True)
     root.grid_columnconfigure(2, weight=1)
+    root.grid_columnconfigure(3, weight=1)
 
-    donation_link = tk.Label(root, text='Support FreqFinder', fg='#0066cc', cursor='hand2', font=('Arial', 10, 'underline'))
+    donation_link = tk.Label(root, text=f'FreqFinder v{APP_VERSION} • Support', fg='#0066cc', cursor='hand2', font=('Arial', 10, 'underline'))
     donation_link.grid(row=0, column=0, columnspan=4, sticky='e', padx=8, pady=(6, 0))
-    donation_link.bind('<Button-1>', lambda e: open_donations())
+    donation_link.bind('<Button-1>', lambda e: show_welcome_dialog())
 
-    def show_donation_dialog():
+    def show_welcome_dialog():
         dlg = tk.Toplevel(root)
-        dlg.title('Support FreqFinder')
-        dlg.geometry('450x180')
+        dlg.title('Welcome to FreqFinder')
+        dlg.resizable(False, False)
+        center_and_clamp(dlg, 580, 340)
         dlg.grab_set()
         dlg.transient(root)
-        dlg.resizable(False, False)
         dlg.lift()
         dlg.focus()
         dlg.attributes('-topmost', True)
-        tk.Label(dlg, text="Please help pay for the numerous accounts, interfaces and time that I have spent on FreqFinder.", wraplength=410, justify='left', font=(None, 11)).pack(padx=20, pady=(18, 10))
-        btn_frame = tk.Frame(dlg)
-        btn_frame.pack(pady=(0, 16))
 
-        def close_dialog():
-            dlg.destroy()
+        banner = tk.Frame(dlg, bg='#1f2937')
+        banner.pack(fill='x')
+        tk.Label(banner, text='FreqFinder', bg='#1f2937', fg='white', font=('Arial', 16, 'bold')).pack(anchor='w', padx=18, pady=(14, 4))
+        tk.Label(banner, text=f'Version {APP_VERSION}', bg='#1f2937', fg='#cbd5e1', font=('Arial', 10)).pack(anchor='w', padx=18, pady=(0, 14))
 
-        def open_donate():
-            dlg.destroy()
-            open_donations()
+        body = tk.Frame(dlg, padx=18, pady=14)
+        body.pack(fill='both', expand=True)
 
-        tk.Button(btn_frame, text="Not Now", width=12, command=close_dialog).pack(side='left', padx=10)
-        tk.Button(btn_frame, text="Donate", width=12, command=open_donate).pack(side='left', padx=10)
+        left = tk.Frame(body)
+        left.pack(side='left', fill='both', expand=True)
+        right = tk.Frame(body, bd=1, relief='solid', padx=14, pady=14, bg='#f8fafc')
+        right.pack(side='right', fill='y', padx=(12, 0))
 
-    # Show donation dialog on program open
-    root.after(500, show_donation_dialog)
+        tk.Label(left, text='Welcome to FreqFinder', font=('Arial', 13, 'bold')).pack(anchor='w')
+        tk.Label(left, text='Build high-quality radio channel exports quickly with support for repeaters, NOAA/MURS, FRS-GMRS, and Radio Browser FM data.',
+                 wraplength=340, justify='left', fg='#334155', font=('Arial', 10)).pack(anchor='w', pady=(8, 12))
+
+        intro_items = [
+            'RadioReference for repeaters and emergency channels',
+            'Radio Browser for FM broadcast station programming',
+            'One ZIP mode can target ~80% radio capacity with top channels',
+            'Use the tabbed pages to choose AM, NOAA/MURS, FRS-GMRS and Emergency',
+        ]
+        for item in intro_items:
+            tk.Label(left, text=f'• {item}', wraplength=340, justify='left', fg='#334155', font=('Arial', 9)).pack(anchor='w', pady=2)
+
+        tk.Label(right, text='Support the project', bg='#f8fafc', font=('Arial', 11, 'bold')).pack(anchor='w')
+        tk.Label(right, text='Help keep the sources, scraping tools, and UI improvements maintained.',
+                 wraplength=200, justify='left', bg='#f8fafc', fg='#475569', font=('Arial', 9)).pack(anchor='w', pady=(10, 14))
+        tk.Button(right, text='Donate Now', bg='#2563eb', fg='white', font=('Arial', 10, 'bold'), width=20,
+                  command=lambda: [dlg.destroy(), open_donations()]).pack(anchor='w')
+        tk.Button(right, text='View GitHub', command=open_github, width=20).pack(anchor='w', pady=(10, 0))
+
+        footer = tk.Frame(dlg)
+        footer.pack(fill='x', padx=18, pady=(0, 14))
+        tk.Button(footer, text='Get Started', command=dlg.destroy, bg='#10b981', fg='white', font=('Arial', 10, 'bold'), width=14).pack(side='right')
+        tk.Button(footer, text='Donate', command=lambda: [dlg.destroy(), open_donations()], bg='#2563eb', fg='white', font=('Arial', 10, 'bold'), width=14).pack(side='right', padx=8)
+
+    if not persistent_settings.get('disable_startup_tips', 0):
+        root.after(500, show_welcome_dialog)
 
     # Create a reusable tooltip class for better user guidance
     class ToolTip:
@@ -3018,6 +3067,16 @@ def launch_gui_and_run(default_pages, output_path):
     resolved_label_widgets = []
     last_zips = persistent_settings.get('last_zip_entries', [])
     input_start_row = 1
+
+    band_tabs = ttk.Notebook(root)
+    page_frames = {}
+    for title, bands in PAGE_BAND_GROUPS:
+        frame = ttk.Frame(band_tabs)
+        band_tabs.add(frame, text=title)
+        page_frames[title] = frame
+
+    zip_frame = tk.Frame(page_frames['Zip Code Freq Finder'])
+    zip_frame.pack(fill='both', expand=True, padx=8, pady=8)
 
     # load radioref index (map normalized 'county, state' -> ctid)
     rr_index = {}
@@ -3101,21 +3160,19 @@ def launch_gui_and_run(default_pages, output_path):
         if i <= len(last_zips):
             iv.set(last_zips[i-1])
 
-        label = tk.Label(root, text=f'Zip Code {i}:')
-        label.grid(row=input_start_row + i-1, column=0, sticky='w', padx=4)
+        label = tk.Label(zip_frame, text=f'Zip Code {i}:')
+        label.grid(row=input_start_row + i-1, column=0, sticky='w', padx=4, pady=2)
         ToolTip(label, 'Enter a 5-digit ZIP code or RadioReference URL\nto search for frequencies in that area')
         
-        ent = tk.Entry(root, textvariable=iv, width=14)
-        ent.grid(row=input_start_row + i-1, column=1, sticky='w', padx=4)
+        ent = tk.Entry(zip_frame, textvariable=iv, width=14)
+        ent.grid(row=input_start_row + i-1, column=1, sticky='w', padx=4, pady=2)
         ToolTip(ent, 'ZIP Code: Searches for repeaters in that area\nURL: Directly uses RadioReference page\nBand tokens like 2m, 70cm, 1.25m, NOAA, Emergency are recognized and applied as selected bands.')
         
-        # resolved label to the right
-        resolved_lbl = tk.Label(root, textvariable=resolved_labels[i-1], anchor='w', fg='#666666', wraplength=320, justify='left')
-        resolved_lbl.grid(row=input_start_row + i-1, column=2, sticky='w', padx=4)
+        resolved_lbl = tk.Label(zip_frame, textvariable=resolved_labels[i-1], anchor='w', fg='#666666', wraplength=320, justify='left')
+        resolved_lbl.grid(row=input_start_row + i-1, column=2, columnspan=2, sticky='w', padx=4, pady=2)
         resolved_label_widgets.append(resolved_lbl)
         ToolTip(resolved_lbl, 'Shows the county/state location found\nand its RadioReference ID (ctid)')
         
-        # trace changes
         iv.trace_add('write', lambda *_i, idx=i-1: resolve_input(idx))
         if iv.get().strip():
             resolve_input(i-1)
@@ -3301,20 +3358,18 @@ def launch_gui_and_run(default_pages, output_path):
     tk.Button(profile_actions_frame, text='Traveler', command=lambda: apply_profile('Traveler'), width=10).grid(row=2, column=1, padx=3, pady=2)
     tk.Button(profile_actions_frame, text='HamScan', command=lambda: apply_profile('HamScan'), width=10).grid(row=2, column=2, padx=3, pady=2)
 
-    band_tabs = ttk.Notebook(root)
-    band_tabs.grid(row=start_row+1, column=0, sticky='nw', padx=8, pady=4)
-
-    page_frames = {}
-    for title, bands in PAGE_BAND_GROUPS:
-        frame = ttk.Frame(band_tabs)
-        band_tabs.add(frame, text=title)
-        page_frames[title] = frame
+    band_tabs.grid(row=start_row+1, column=0, columnspan=2, sticky='nsew', padx=8, pady=4)
+    root.grid_rowconfigure(start_row+1, weight=1)
+    root.grid_columnconfigure(0, weight=1)
+    root.grid_columnconfigure(1, weight=1)
 
     band_vars = {}
     emergency_filter_vars = {}
-    band_listbox = tk.Listbox(root, height=6)
-    band_listbox.grid(row=start_row+1, column=1, rowspan=6, sticky='n', padx=8, pady=4)
+    band_listbox = tk.Listbox(page_frames['AM'], height=8)
+    band_listbox.grid(row=0, column=1, rowspan=5, sticky='n', padx=8, pady=4)
     ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
+    ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
+    tk.Label(page_frames['AM'], text='High-quality AM repeater selection: best used with one ZIP code for local coverage.', font=('Arial', 9), fg='#555').grid(row=5, column=0, columnspan=2, sticky='w', padx=10, pady=(4, 0))
 
     drag_data = {'item': None, 'index': None}
     def on_band_drag_start(event):
@@ -3388,8 +3443,8 @@ def launch_gui_and_run(default_pages, output_path):
         band_listbox.selection_set(i+1)
         update_band_preview_and_summary()
 
-    search_frame = tk.Frame(root)
-    search_frame.grid(row=start_row+2, column=0, sticky='w', padx=4, pady=(2, 2))
+    search_frame = tk.Frame(zip_frame)
+    search_frame.grid(row=input_start_row + len(input_vars), column=0, sticky='w', padx=4, pady=(12, 2))
     tk.Label(search_frame, text='Filter bands:').grid(row=0, column=0, sticky='w')
     search_entry = tk.Entry(search_frame, textvariable=band_search_var, width=18)
     search_entry.grid(row=0, column=1, sticky='w', padx=(4,0))
@@ -3420,14 +3475,15 @@ def launch_gui_and_run(default_pages, output_path):
     ToolTip(frs_unlock_cb, 'Mark FRS/GMRS fixed channels as unlocked for programming (requires firmware unlock on your radio)')
 
     band_preview_frame = tk.LabelFrame(root, text='Band Plan Preview', padx=4, pady=4)
-    band_preview_frame.grid(row=start_row+1, column=2, columnspan=2, rowspan=1, sticky='nwe', padx=4, pady=2)
+    band_preview_frame.grid(row=start_row+1, column=2, columnspan=2, rowspan=1, sticky='nsew', padx=4, pady=2)
     band_preview_text = tk.Text(band_preview_frame, wrap='word', font=('Arial', 9), bg=band_preview_frame.cget('bg'), bd=0, highlightthickness=0, height=8)
-    band_preview_text.pack(fill='both', expand=False)
+    band_preview_text.pack(fill='both', expand=True)
     band_preview_text.insert('1.0', '')
     band_preview_text.config(state='disabled')
 
     export_summary_frame = tk.LabelFrame(root, text='Export Summary', padx=4, pady=4)
-    export_summary_frame.grid(row=start_row+2, column=2, columnspan=2, rowspan=2, sticky='nwe', padx=4, pady=2)
+    export_summary_frame.grid(row=start_row+2, column=2, columnspan=2, rowspan=2, sticky='nsew', padx=4, pady=2)
+    root.grid_rowconfigure(start_row+2, weight=1)
     export_summary_label = tk.Label(export_summary_frame, text='', justify='left', anchor='nw', font=('Arial', 9))
     export_summary_label.pack(fill='both', expand=True)
 
@@ -3460,7 +3516,18 @@ def launch_gui_and_run(default_pages, output_path):
         lines.append(f'Profile: {profile_var.get() or "None"}')
         lines.append(f'Scanner mode: {"On" if preferences_data.get("scanner_mode").get() else "Off"}')
 
-        summary_lines = [f'Preview Mode: {"CSV with skip flags" if preferences_data.get("preview_mode").get() else "Summary only"}', '']
+        source_name = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
+        if source_name == 'Radio Browser':
+            lines.append('NOTE: Band plan preview is unavailable with Radio Browser. Use RadioReference for repeater/Emergency band plans.')
+        summary_lines = [
+            f'Preview Mode: {"CSV with skip flags" if preferences_data.get("preview_mode").get() else "Summary only"}',
+            f'Data source: {source_name}',
+            ''
+        ]
+        zip_count = sum(1 for iv in input_vars if re.fullmatch(r'^\d{5}$', iv.get().strip()))
+        if source_name == 'RadioReference' and zip_count == 1 and preferences_data.get('customization_level').get() in ('Advanced', 'High Quality'):
+            summary_lines.append('Quality target: selecting the best channels up to 80% of radio capacity.')
+            summary_lines.append('')
         selected = get_selected_band_order()
         summary_lines.append(f'Ordered selection: {" > ".join(selected) if selected else "None"}')
         emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
@@ -3519,6 +3586,7 @@ def launch_gui_and_run(default_pages, output_path):
 
     # Emergency subtype filters appear on the Emergency tab
     emergency_frame = page_frames['Emergency']
+    tk.Label(emergency_frame, text='Emergency selection is optimized for high-quality public safety channels. High Quality export mode will try to use the best channels within 80% of your radio capacity.', wraplength=380, justify='left', font=('Arial', 9), fg='#555').grid(row=0, column=0, columnspan=2, sticky='w', padx=10, pady=(6, 0))
     tk.Label(emergency_frame, text='Emergency Types:', font=('Arial', 10, 'bold')).grid(row=1, column=0, sticky='w', padx=10, pady=(10, 4))
     for i, et in enumerate(EMERGENCY_TYPE_KEYWORDS.keys()):
         ve = tk.IntVar(value=1)
@@ -3859,9 +3927,13 @@ def launch_gui_and_run(default_pages, output_path):
             zip_rows[pr['zip']].extend(pr['rows'])
 
         if max_channels and zip_order:
-            reserved_noaa = 10
+            reserved_noaa = 10 if 'NOAA' in sel_bands else 0
             remaining_slots = max(max_channels - reserved_noaa, 0)
-            rows.extend(select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order))
+            quality_target = selected_source == 'RadioReference' and len(zip_order) == 1 and cust_level in ('Advanced', 'High Quality')
+            if quality_target:
+                target_capacity = max(int(max_channels * 0.8), 1)
+                remaining_slots = min(remaining_slots, target_capacity)
+            rows.extend(select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order, prioritize_quality=quality_target))
             for pr in page_results:
                 if pr['zip'] is None:
                     rows.extend(pr['rows'])
