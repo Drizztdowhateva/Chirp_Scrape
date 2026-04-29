@@ -8,6 +8,7 @@ Welcome to FreqFinder v2.0 — the latest release focused on cleaner export work
 This project uses a small index file, `radioref.csv`, to map RadioReference CTID pages (county/city titles) to their numeric CTID IDs. This file is required for ZIP-to-CTID mapping in the GUI and for accurate RadioReference lookups.
 
 **If `radioref.csv` is missing or outdated, update it with:**
+
 ```bash
 ./.venv/bin/python make_radioref_list.py --start-id 1 --max-id 3000 --append
 ```
@@ -112,12 +113,14 @@ Primary runtime command (GUI default, no switches):
 ```
 
 Runtime launchers are kept in the main project directory for easy discovery:
+
 - `freqfinder.sh`
 - `bootstrap.py`
 
 ## Data Source Options
 
 FreqFinder supports both:
+
 - `RadioReference` as the primary repeater frequency source
 - `Radio Browser` as a public, API-key-free broadcast station metadata source
 
@@ -157,6 +160,7 @@ Packaging is platform-native. Build on the target OS:
 ```
 
 Output:
+
 - `dist/FreqFinder`
 
 ### macOS App + DMG
@@ -166,6 +170,7 @@ Output:
 ```
 
 Outputs:
+
 - `dist/FreqFinder.app`
 - `dist/FreqFinder.dmg`
 
@@ -178,6 +183,7 @@ Run in PowerShell:
 ```
 
 Output:
+
 - `dist/FreqFinder.exe`
 
 Notes:
@@ -194,6 +200,7 @@ Developing and maintaining open source software takes significant time and resou
 **Note:** Donations are currently supported via PayPal and Cash App only.
 
 ### Why Donate? 💡
+
 - Open source software fosters innovation and collaboration.
 - Supports learning and skill development for programmers.
 - Provides cost-effective solutions for everyone.
@@ -202,11 +209,13 @@ Developing and maintaining open source software takes significant time and resou
 ### Choose Your Donation Method
 
 #### PayPal
+
 [![PayPal QR Code](https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A%2F%2Fpaypal.me%2FDr1zztD)](https://paypal.me/Dr1zztD)
 
 [paypal.me/Dr1zztD](https://paypal.me/Dr1zztD)
 
 #### Cash App
+
 [![Cash App QR Code](https://cash.app/qr/$teerRight)](https://cash.app/$teerRight)
 
 [$teerRight](https://cash.app/$teerRight)
@@ -220,6 +229,7 @@ Developing and maintaining open source software takes significant time and resou
 **If you encounter numpy/pandas import errors:**
 
 FreqFinder now supports Python 3.13 with properly compatible dependencies:
+
 - **numpy 2.4.2+** - Required for Python 3.13 compatibility
 - **pandas 3.0.0+** - Updated for latest numpy and Python versions
 
@@ -252,6 +262,7 @@ Run this command to crawl RadioReference and build or refresh the index:
 ```
 
 **Notes:**
+
 - The crawl can take a long time; use `--delay` to be polite and `--stop-after-missing` to stop after many consecutive misses.
 - `chirp_rr_zip_scraper.py` will still run without `radioref.csv`, but ZIP lookups that depend on the index may show "(no ctid)" and fall back to ZIP-level RadioReference pages.
 
@@ -265,11 +276,11 @@ See `README.txt` for additional project notes.
 
 This project relies on and is inspired by the following resources:
 
-- **RadioReference.com** — frequency database (https://www.radioreference.com)
-- **CHIRP** — open-source radio programming software (https://chirpmyradio.com)
-  - GitHub repo owner: Dan Smith (KK7DS) — https://github.com/kk7ds/chirp
+- **RadioReference.com** — frequency database (<https://www.radioreference.com>)
+- **CHIRP** — open-source radio programming software (<https://chirpmyradio.com>)
+  - GitHub repo owner: Dan Smith (KK7DS) — <https://github.com/kk7ds/chirp>
   - Lead developer/maintainer: Jim Unroe (KC9HI)
-- **John Miklor (WA9QJV)** — comprehensive CHIRP programming guides & Baofeng resources (https://www.miklor.com/CHIRP/index.php)
+- **John Miklor (WA9QJV)** — comprehensive CHIRP programming guides & Baofeng resources (<https://www.miklor.com/CHIRP/index.php>)
 
 ## License ⚖️
 
