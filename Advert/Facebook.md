@@ -193,11 +193,11 @@ Learn more about frequency management tools..."
 
 ### Transparency Dashboard
 ```
-https://chirpscrape.example.com/transparency
-- Data retention policies
-- Privacy audits
-- Request fulfillment stats
-- GDPR compliance reports
+https://github.com/Drizztdowhateva/FreqFinder
+- Open source code repository
+- Issue tracking
+- Feature requests
+- Contribution guidelines
 ```
 
 ---
@@ -371,10 +371,9 @@ Report inappropriate content:
 ## 📋 Compliance & Legal
 
 ### Privacy Policies
-- [Full Privacy Policy](https://chirpscrape.example.com/privacy)
-- [Terms of Service](https://chirpscrape.example.com/terms)
-- [Community Guidelines](https://chirpscrape.example.com/guidelines)
-- [Data Processing Agreement](https://chirpscrape.example.com/dpa)
+- [MIT License](https://github.com/Drizztdowhateva/FreqFinder/blob/main/LICENSE)
+- [GitHub Repository](https://github.com/Drizztdowhateva/FreqFinder)
+- [Issues & Support](https://github.com/Drizztdowhateva/FreqFinder/issues)
 
 ### Regulations Compliance
 - ✅ GDPR (EU)
@@ -415,17 +414,14 @@ Refer a friend:
 ## 📞 Support & Feedback
 
 ### Contact Channels
-- 💬 [Discord Community](https://discord.gg/chirpscrape)
-- 📧 [Email Support](mailto:support@chirpscrape.example.com)
-- 🐦 [@FreqFinder](https://twitter.com/FreqFinder)
-- 📱 [Facebook Group](https://facebook.com/groups/chirpscrape)
-- 📘 [LinkedIn Company](https://linkedin.com/company/chirpscrape)
+- � [GitHub Issues](https://github.com/Drizztdowhateva/FreqFinder/issues)
+- 📧 [Email Support](mailto:support@freqfinder.example.com)
+- � [GitHub Repository](https://github.com/Drizztdowhateva/FreqFinder)
 
 ### Feedback Forms
-- Feature requests: [Form](https://forms.example.com/features)
-- Bug reports: [Form](https://forms.example.com/bugs)
-- Privacy concerns: [Form](https://forms.example.com/privacy)
-- General feedback: [Form](https://forms.example.com/feedback)
+- Feature requests: [GitHub Issues](https://github.com/Drizztdowhateva/FreqFinder/issues)
+- Bug reports: [GitHub Issues](https://github.com/Drizztdowhateva/FreqFinder/issues)
+- General feedback: [GitHub Discussions](https://github.com/Drizztdowhateva/FreqFinder/discussions)
 
 ---
 

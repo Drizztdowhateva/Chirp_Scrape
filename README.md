@@ -263,7 +263,7 @@ See `README.txt` for additional project notes.
 This project relies on and is inspired by the following resources:
 
 - **RadioReference.com** — frequency database (https://www.radioreference.com)
-- **CHIRP** — open-source radio programming software (https://chirp.danplanet.com)
+- **CHIRP** — open-source radio programming software (https://chirpmyradio.com)
   - GitHub repo owner: Dan Smith (KK7DS) — https://github.com/kk7ds/chirp
   - Lead developer/maintainer: Jim Unroe (KC9HI)
 - **John Miklor (WA9QJV)** — comprehensive CHIRP programming guides & Baofeng resources (https://www.miklor.com/CHIRP/index.php)
