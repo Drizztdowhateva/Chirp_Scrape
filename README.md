@@ -1,7 +1,7 @@
 
 # FreqFinder RadioReference Scraper v2.0 🚀
 
-![FreqFinder screenshot](https://raw.githubusercontent.com/Drizztdowhateva/FreqFinder/main/media/26Feb_16_FreqFinder.png)
+![FreqFinder screenshot](media/2026April13_FreqFinder.png)
 
 Welcome to FreqFinder v2.0 — the latest release focused on cleaner export workflow, smarter band profiles, and better donation and documentation support.
 
