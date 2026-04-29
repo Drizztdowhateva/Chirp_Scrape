@@ -107,7 +107,13 @@ def gui_session_available():
     return _TK_AVAILABLE
 
 DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
 }
 HTTP_SESSION = requests.Session()
 HTTP_SESSION.headers.update(DEFAULT_HEADERS)
@@ -181,12 +187,21 @@ def save_last_user_state(profile_name, zip_values):
     except Exception:
         pass
 
-def http_get(url, timeout=15, headers=None, delay=None, **kwargs):
-    """Shared HTTP GET helper using one session for connection reuse.
-
-    Supports optional delays between remote requests to avoid rate limiting
-    and reduce anti-scraping detection.
+def http_get_with_retry(url, timeout=15, headers=None, delay=None, max_retries=3, **kwargs):
+    """Enhanced HTTP GET helper with exponential backoff retry logic.
+    
+    Args:
+        url: URL to fetch
+        timeout: Request timeout in seconds
+        headers: Optional custom headers
+        delay: Optional delay between requests
+        max_retries: Maximum number of retry attempts
+        **kwargs: Additional arguments for requests
+        
+    Returns:
+        requests.Response object or raises exception
     """
+    import random
     global _last_http_get_timestamp
     if delay is None:
         delay = REQUEST_DELAY_SECONDS
@@ -196,36 +211,64 @@ def http_get(url, timeout=15, headers=None, delay=None, **kwargs):
             time.sleep(delay - elapsed)
 
     req_headers = DEFAULT_HEADERS if headers is None else headers
-    attempts = 3
-    backoff = 1.0
-    for attempt in range(attempts):
+    
+    for attempt in range(max_retries):
         try:
             resp = HTTP_SESSION.get(url, headers=req_headers, timeout=timeout, **kwargs)
+            _last_http_get_timestamp = time.monotonic()
+            
+            # Check for specific error conditions
+            if resp.status_code == 405 and 'Human Verification' in resp.text:
+                logger.error(f"Human verification required for {url}")
+                raise RuntimeError(
+                    'RadioReference blocked access with human verification. '
+                    'This means automated scraping is not currently allowed from this environment. '
+                    'Use the Radio Browser source in Preferences, or provide a direct API-backed source.'
+                )
+            
+            # Handle rate limiting
+            if resp.status_code in (429, 503):
+                if attempt + 1 < max_retries:
+                    wait_time = (2 ** attempt) + random.uniform(0.5, 1.5)
+                    logger.warning(f"Rate limited (status {resp.status_code}), retry {attempt + 1}/{max_retries} after {wait_time:.1f}s")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"Rate limiting exceeded after {max_retries} attempts for {url}")
+                    raise requests.RequestException(f"Rate limiting exceeded: HTTP {resp.status_code}")
+            
+            # Handle forbidden requests
+            if resp.status_code == 403:
+                if attempt + 1 < max_retries:
+                    wait_time = (2 ** attempt) + random.uniform(1.0, 2.0)
+                    logger.warning(f"Access forbidden (403), retry {attempt + 1}/{max_retries} after {wait_time:.1f}s")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"Access forbidden after {max_retries} attempts for {url}")
+                    raise requests.RequestException(f"Access forbidden: HTTP 403")
+            
+            # Success
+            resp.raise_for_status()
+            return resp
+            
         except requests.RequestException as exc:
-            if attempt + 1 < attempts:
-                time.sleep(backoff)
-                backoff *= 2
-                continue
-            raise
+            if attempt + 1 < max_retries:
+                wait_time = (2 ** attempt) + random.uniform(0.5, 1.5)
+                logger.warning(f"Request failed (attempt {attempt + 1}/{max_retries}): {exc}, retrying after {wait_time:.1f}s")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Request failed after {max_retries} attempts: {exc}")
+                raise
 
-        _last_http_get_timestamp = time.monotonic()
-        if resp.status_code == 405 and 'Human Verification' in resp.text:
-            raise RuntimeError(
-                'RadioReference blocked access with human verification. '
-                'This means automated scraping is not currently allowed from this environment. '
-                'Use the Radio Browser source in Preferences, or provide a direct API-backed source.'
-            )
-        if resp.status_code in (429, 503):
-            if attempt + 1 < attempts:
-                time.sleep(backoff)
-                backoff *= 2
-                continue
-        if resp.status_code == 403 and attempt + 1 < attempts:
-            time.sleep(backoff)
-            backoff *= 2
-            continue
-        resp.raise_for_status()
-        return resp
+
+def http_get(url, timeout=15, headers=None, delay=None, **kwargs):
+    """Shared HTTP GET helper using one session for connection reuse.
+
+    Supports optional delays between remote requests to avoid rate limiting
+    and reduce anti-scraping detection.
+    """
+    return http_get_with_retry(url, timeout, headers, delay, max_retries=3, **kwargs)
 
     raise RuntimeError(f'HTTP GET failed for {url} after {attempts} attempts')
 
@@ -358,27 +401,34 @@ DEFAULT_PAGES = {
 
 # Band definitions for GUI selection and filtering (ranges in MHz)
 BAND_RANGES = {
-    '70cm': [(420.0, 450.0)],
+    '10m': [(28.0, 29.7)],
+    '6m': [(50.0, 54.0)],
     '2m': [(144.0, 148.0)],
     '1.25m': [(222.0, 225.0)],
+    '70cm': [(420.0, 450.0)],
+    '33cm': [(902.0, 928.0)],
+    '23cm': [(1240.0, 1300.0)],
     'NOAA': [(162.4, 162.55)],
     'MURS': [(151.82, 154.6)],
     'FRS/GMRS': [(462.0, 467.0)],
     # Emergency: heuristic ranges covering common public-safety analog bands
     # This includes police, citywide, EMS, fire, and similar dispatch channels.
+    # Ranges adjusted to exclude ham radio bands (2m: 144-148, 70cm: 420-450)
     'Emergency': [
         (30.0, 50.0),    # Low VHF (some legacy)
-        (138.0, 174.0),  # VHF high-band (public safety)
-        (380.0, 470.0),  # UHF public safety
+        (138.0, 144.0),  # VHF high-band below 2m ham band
+        (148.0, 174.0),  # VHF high-band above 2m ham band
+        (380.0, 420.0),  # UHF public safety below 70cm ham band
+        (450.0, 470.0),  # UHF public safety above 70cm ham band
         (700.0, 900.0),  # 700/800 MHz public-safety ranges
     ],
 }
 
 PAGE_BAND_GROUPS = [
     ('Zip Code Freq Finder', []),
-    ('AM', ['70cm', '1.25m', '2m']),
-    ('NOAA/MURS', ['NOAA', 'MURS']),
-    ('FRS-GMRS', ['FRS/GMRS']),
+    ('Ham-SSB/AM', ['10m', '6m', '2m', '1.25m', '70cm', '33cm', '23cm']),
+    ('MURS', ['MURS']),
+    ('GMRS/FRS', ['FRS/GMRS']),
     ('Emergency', ['Emergency']),
 ]
 
@@ -423,13 +473,37 @@ def emergency_row_type(row):
     return None
 
 
-def select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order=None, prioritize_quality=False):
+def _row_score(row, model_info=None):
+    """Score function for ranking export rows by completeness and quality."""
+    score = 0
+    for field in ('Name', 'Comment', 'Tone', 'rToneFreq', 'cToneFreq', 'DtcsCode', 'Duplex', 'Offset'):
+        if row.get(field):
+            score += 1
+    score += len(str(row.get('Name','')))
+    score += len(str(row.get('Comment','')))
+    
+    # Bonus for radio model frequency compatibility
+    if model_info and 'frequency_ranges' in model_info:
+        freq = row.get('Frequency')
+        if freq:
+            try:
+                freq_float = float(freq)
+                for low, high in model_info['frequency_ranges']:
+                    if low <= freq_float <= high:
+                        score += 50  # Significant bonus for compatible frequencies
+                        break
+            except (ValueError, TypeError):
+                pass
+    
+    return score
+
+def select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order=None, prioritize_quality=False, model_info=None):
     """Select rows across ZIPs using proportional allocation by available rows."""
     if not zip_rows or remaining_slots <= 0:
         return []
     if prioritize_quality:
         for zip_code, rows in zip_rows.items():
-            zip_rows[zip_code] = sorted(rows, key=_row_score, reverse=True)
+            zip_rows[zip_code] = sorted(rows, key=lambda row: _row_score(row, model_info), reverse=True)
     zip_counts = {zip_code: len(rows) for zip_code, rows in zip_rows.items()}
     total_rows = sum(zip_counts.values())
     if total_rows <= 0:
@@ -502,7 +576,9 @@ RADIO_MODELS = {
         'supports_mode': True,
         'supports_skip': True,
     'supports_1_25': False,
+        'max_channels': 1000,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (222.0, 225.0), (400.0, 520.0), (700.0, 900.0)],
         'description': 'Compatible with most CHIRP-supported radios'
     },
 
@@ -517,7 +593,7 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-        'max_channels': 128,
+        'max_channels': 125,
         'supports_1_25': False,
         'tone_frequencies': True,
         'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
@@ -535,7 +611,7 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-        'max_channels': 128,
+        'max_channels': 125,
         'supports_1_25': False,
         'tone_frequencies': True,
         'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
@@ -553,7 +629,7 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-        'max_channels': 128,
+        'max_channels': 125,
         'supports_1_25': False,
         'tone_frequencies': True,
         'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
@@ -572,8 +648,10 @@ RADIO_MODELS = {
         'supports_mode': True,
         'supports_skip': True,
         'supports_comment': True,
-        'max_channels': 128,
+        'max_channels': 125,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
         'description': 'Rugged dual-band UHF/VHF handheld. Includes UV-82LP and UV-82X variants.'
     },
 
@@ -589,8 +667,10 @@ RADIO_MODELS = {
         'supports_mode': True,
         'supports_skip': True,
         'supports_comment': True,
-        'max_channels': 128,
+        'max_channels': 125,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
         'description': 'Low-power UV-82LP variant with the same feature set and compatibility as UV-82.'
     },
     'Motorola': {
@@ -608,7 +688,9 @@ RADIO_MODELS = {
         'supports_color_code': True,
         'supports_digital_mode': True,
         'max_channels': 1000,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (380.0, 520.0), (700.0, 900.0)],
         'description': 'Professional grade digital/analog radio'
     },
     'Kenwood': {
@@ -623,8 +705,10 @@ RADIO_MODELS = {
         'supports_mode': True,
         'supports_skip': True,
         'supports_comment': True,
-        'max_channels': 500,
+        'max_channels': 1000,
+        'supports_1_25': True,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (222.0, 225.0), (400.0, 520.0)],
         'description': 'Kenwood mobile/portable radios'
     },
     'Motorola_APX': {
@@ -640,8 +724,10 @@ RADIO_MODELS = {
         'supports_skip': True,
         'supports_comment': True,
         'supports_digital_mode': True,
-        'max_channels': 2000,
+        'max_channels': 5000,
+        'supports_1_25': False,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (380.0, 520.0), (700.0, 900.0)],
         'description': 'Professional P25-capable Motorola radios (APX series)'
     },
     'Icom_P25': {
@@ -657,8 +743,10 @@ RADIO_MODELS = {
         'supports_skip': True,
         'supports_comment': True,
         'supports_digital_mode': True,
-        'max_channels': 2000,
+        'max_channels': 5000,
+        'supports_1_25': True,
         'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (222.0, 225.0), (400.0, 520.0), (700.0, 900.0)],
         'description': 'Icom radios with P25 capability'
     }
 }
@@ -1336,6 +1424,653 @@ class QRZHelper:
         }
 
 
+# New frequency source implementations with safety mechanisms
+
+# Enhanced logging for debugging
+import logging
+import hashlib
+import json
+import os
+from datetime import datetime, timedelta
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Simple caching system for frequently accessed data
+CACHE_DIR = os.path.expanduser('~/.freqfinder_cache')
+CACHE_EXPIRY_HOURS = 24  # Cache expires after 24 hours
+
+def get_cache_key(source, **kwargs):
+    """Generate cache key for source and parameters."""
+    key_parts = [source]
+    for k, v in sorted(kwargs.items()):
+        key_parts.append(f"{k}={v}")
+    return hashlib.md5('|'.join(key_parts).encode()).hexdigest()
+
+def get_cached_data(cache_key):
+    """Retrieve cached data if available and not expired."""
+    cache_file = os.path.join(CACHE_DIR, f"{cache_key}.json")
+    
+    if not os.path.exists(cache_file):
+        return None
+        
+    try:
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+            
+        # Check if cache is expired
+        cache_time = datetime.fromisoformat(cache_data.get('timestamp', '1970-01-01T00:00:00'))
+        if datetime.now() - cache_time > timedelta(hours=CACHE_EXPIRY_HOURS):
+            logger.debug(f"Cache expired for {cache_key}")
+            os.remove(cache_file)
+            return None
+            
+        logger.info(f"Using cached data for {cache_key}")
+        return cache_data.get('data', [])
+    except Exception as e:
+        logger.error(f"Cache read error: {e}")
+        return None
+
+def cache_data(cache_key, data):
+    """Store data in cache with timestamp."""
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        
+        cache_data = {
+            'timestamp': datetime.now().isoformat(),
+            'data': data
+        }
+        
+        cache_file = os.path.join(CACHE_DIR, f"{cache_key}.json")
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, indent=2)
+            
+        logger.info(f"Cached {len(data)} items for {cache_key}")
+    except Exception as e:
+        logger.error(f"Cache write error: {e}")
+
+def scrape_repeaterbook(zipcode=None, state=None, callsign=None):
+    """Scrape repeater data from RepeaterBook.com with safety measures.
+    
+    Args:
+        zipcode: 5-digit ZIP code for location-based search
+        state: 2-letter state code for state-wide search  
+        callsign: Callsign for specific repeater search
+        
+    Returns:
+        List of tuples (name, frequency, tone, duplex_hint, offset_hint, other_texts)
+    """
+    import random
+    import time
+    import re
+    
+    # Enhanced safety headers for RepeaterBook
+    rb_headers = {
+        **DEFAULT_HEADERS,
+        'Referer': 'https://www.repeaterbook.com/',
+        'Cache-Control': 'max-age=0',
+        'X-Requested-With': 'XMLHttpRequest',
+    }
+    
+    # Source-specific rate limiting
+    SOURCE_DELAYS = {
+        'repeaterbook': 2.5,  # Conservative delay for RepeaterBook
+        'qrz': 4.0,           # Longer delay for QRZ (more sensitive)
+        'intercept_radio': 2.0,  # Moderate delay for InterceptRadio
+        'radioreference': 1.0,   # Standard delay for RadioReference
+    }
+    
+    results = []
+    
+    # Check cache first
+    cache_key = None
+    if callsign:
+        cache_key = get_cache_key('repeaterbook', callsign=callsign)
+    elif zipcode:
+        cache_key = get_cache_key('repeaterbook', zipcode=zipcode)
+    elif state:
+        cache_key = get_cache_key('repeaterbook', state=state)
+    else:
+        cache_key = None
+        
+    if cache_key:
+        cached_data = get_cached_data(cache_key)
+        if cached_data:
+            logger.info(f"Using cached RepeaterBook data for {cache_key}")
+            return cached_data
+    
+    try:
+        if callsign:
+            # Search by callsign
+            url = f"https://www.repeaterbook.com/global_repeaters/keyword.php?func=result&keyword={callsign}"
+        elif zipcode:
+            # Try multiple URL patterns for ZIP search
+            urls_to_try = [
+                f"https://www.repeaterbook.com/global_repeaters/keyword.php?func=result&keyword={zipcode}",
+                f"https://www.repeaterbook.com/global_repeaters/zip.php?zip={zipcode}",
+                f"https://www.repeaterbook.com/repeaters/state/IL?loc={zipcode}",  # Try state pattern
+            ]
+        elif state:
+            # Search by state - try multiple URL patterns
+            state_urls = [
+                f"https://www.repeaterbook.com/global_repeaters/state.php?state={state}",
+                f"https://www.repeaterbook.com/repeaters/state/{state}?loc=",  # Alternative pattern
+            ]
+            urls_to_try = state_urls
+        else:
+            return results
+            
+        # Try each URL until we get results
+        urls_to_test = urls_to_try if zipcode else [url]
+        
+        for test_url in urls_to_test:
+            # Add source-specific delay to avoid detection
+            import random
+            source_delay = SOURCE_DELAYS.get('repeaterbook', 2.0)
+            time.sleep(random.uniform(source_delay * 0.8, source_delay * 1.2))
+            
+            try:
+                resp = http_get(test_url, headers=rb_headers, timeout=20, delay=2.0)
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                
+                # Look for any data in the response
+                text_content = soup.get_text()
+                
+                # Check if we have meaningful results
+                if 'No results' in text_content or len(text_content) < 500:
+                    continue
+                    
+                # Method 1: Look for structured data patterns
+                # Pattern: Callsign Freq Tone Offset Location
+                lines = text_content.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if not line or len(line) < 10:
+                        continue
+                        
+                    # Look for frequency patterns with repeater context
+                    freq_match = re.search(r'(\d{3}\.\d{3})', line)
+                    if not freq_match:
+                        continue
+                        
+                    freq_str = freq_match.group(1)
+                    try:
+                        freq = float(freq_str)
+                        if not valid_freq(freq):
+                            continue
+                    except ValueError:
+                        continue
+                        
+                    # Extract callsign from the same line or nearby lines
+                    callsign_match = re.search(r'([A-Z0-9]{1,2}[A-Z][A-Z0-9]{1,4})', line)
+                    if callsign_match:
+                        name = callsign_match.group(1)
+                    else:
+                        # Look in nearby lines
+                        name = f'RB_{freq_str}'
+                        
+                    # Extract tone if present
+                    tone_match = re.search(r'(\d{2,3}\.\d+)', line)
+                    tone = tone_match.group(1) if tone_match and tone_match.group(1) != freq_str else ''
+                    
+                    # Parse duplex
+                    duplex_hint = None
+                    if '+' in line:
+                        duplex_hint = '+'
+                    elif '-' in line:
+                        duplex_hint = '-'
+                        
+                    results.append((name, freq, tone, duplex_hint, None, line))
+                    
+                if results:
+                    break  # Found results, no need to try other URLs
+                    
+            except Exception as e:
+                print(f"RepeaterBook URL {test_url} failed: {e}")
+                continue
+                
+        # Method 2: Try to find JSON data or API endpoints
+        if not results and zipcode:
+            try:
+                # Look for any JSON data in scripts
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string and 'repeaters' in script.string.lower():
+                        # Try to extract JSON data
+                        json_match = re.search(r'(\{.*\})', script.string)
+                        if json_match:
+                            try:
+                                import json
+                                data = json.loads(json_match.group(1))
+                                # Parse JSON repeater data
+                                if isinstance(data, dict) and 'repeaters' in data:
+                                    for repeater in data['repeaters']:
+                                        if isinstance(repeater, dict):
+                                            freq = repeater.get('frequency')
+                                            if freq and valid_freq(float(freq)):
+                                                name = repeater.get('callsign', f'RB_{freq}')
+                                                tone = repeater.get('tone', '')
+                                                duplex = repeater.get('duplex')
+                                                results.append((name, float(freq), tone, duplex, None, str(repeater)))
+                            except:
+                                pass
+            except:
+                pass
+                    
+        # Additional delay between requests
+        time.sleep(random.uniform(2.0, 4.0))
+        
+    except Exception as e:
+        logger.error(f"RepeaterBook scrape error: {e}")
+        
+    # Cache successful results
+    if results:
+        cache_data(cache_key, results)
+        
+    return results
+
+
+def scrape_qrz_gridmapper(grid_square=None, callsign=None):
+    """Scrape ham radio operator data from QRZ GridMapper with safety measures.
+    
+    Args:
+        grid_square: Maidenhead grid square (e.g., 'EM13')
+        callsign: Amateur radio callsign for lookup
+        
+    Returns:
+        List of tuples (name, frequency, tone, duplex_hint, offset_hint, other_texts)
+        Note: QRZ primarily provides operator info, not frequency data directly
+    """
+    import random
+    import time
+    import re
+    
+    # QRZ-specific headers
+    qrz_headers = {
+        **DEFAULT_HEADERS,
+        'Referer': 'https://www.qrz.com/',
+        'Origin': 'https://www.qrz.com',
+    }
+    
+    # Source-specific delays for QRZ
+    source_delays = {
+        'repeaterbook': 2.5,  # Conservative delay for RepeaterBook
+        'qrz': 4.0,           # Longer delay for QRZ (more sensitive)
+        'intercept_radio': 2.0,  # Moderate delay for InterceptRadio
+        'radioreference': 1.0,   # Standard delay for RadioReference
+    }
+    
+    # Use source-specific delay for QRZ
+    qrz_delay = source_delays.get('qrz', 4.0)
+    
+    results = []
+    
+    try:
+        if callsign:
+            # Direct callsign lookup
+            url = f"https://www.qrz.com/db/{callsign}"
+        elif grid_square:
+            # Grid square search
+            url = f"https://www.qrz.com/gridmapper?grid={grid_square}"
+        else:
+            return results
+            
+        # Use source-specific delay for QRZ
+        time.sleep(random.uniform(qrz_delay * 0.8, qrz_delay * 1.2))
+        
+        resp = http_get(url, headers=qrz_headers, timeout=20, delay=3.0)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Check if login is required
+        text_content = soup.get_text().lower()
+        if 'login' in text_content and 'register' in text_content:
+            # QRZ requires login for detailed data
+            if callsign:
+                results.append((callsign, None, None, None, None, f"QRZ requires login for detailed {callsign} data"))
+            else:
+                results.append(("QRZ_Search", None, None, None, None, f"QRZ requires login for grid square {grid_square} data"))
+        else:
+            # Try to extract public information
+            if callsign:
+                # Extract operator info from QRZ profile
+                name_elem = soup.select_one("h1") or soup.select_one(".callsign")
+                if name_elem:
+                    name = name_elem.text.strip()
+                    
+                    # Look for any frequency-related information
+                    freq_patterns = []
+                    text = soup.get_text()
+                    
+                    # Try to find frequency mentions
+                    freq_matches = re.findall(r'(\d{3}\.\d{3})', text)
+                    for freq_str in freq_matches:
+                        try:
+                            freq = float(freq_str)
+                            if valid_freq(freq):
+                                freq_patterns.append(freq)
+                        except ValueError:
+                            continue
+                    
+                    if freq_patterns:
+                        # Add frequency data if found
+                        for freq in freq_patterns[:3]:  # Limit to avoid too many
+                            results.append((name, freq, '', None, None, f"QRZ frequency data for {callsign}"))
+                    else:
+                        # Add basic operator info
+                        results.append((name, None, None, None, None, f"QRZ operator lookup for {callsign} (no frequency data)"))
+                        
+            elif grid_square:
+                # Grid square search - look for any operator data
+                results.append(("QRZ_GridSearch", None, None, None, None, f"QRZ grid square search for {grid_square} (login required for details)"))
+                
+        # Extended delay for QRZ
+        time.sleep(random.uniform(3.0, 5.0))
+        
+    except Exception as e:
+        print(f"QRZ GridMapper scrape error: {e}")
+        # Add error result
+        if callsign:
+            results.append((callsign, None, None, None, None, f"QRZ lookup failed for {callsign}: {str(e)}"))
+        elif grid_square:
+            results.append(("QRZ_GridSearch", None, None, None, None, f"QRZ grid search failed for {grid_square}: {str(e)}"))
+        
+    return results
+
+
+def scrape_intercept_radio(zipcode):
+    """Scrape ham radio frequencies from InterceptRadio.com with safety measures.
+    
+    Args:
+        zipcode: 5-digit ZIP code
+        
+    Returns:
+        List of tuples (name, frequency, tone, duplex_hint, offset_hint, other_texts)
+    """
+    import random
+    import time
+    import re
+    
+    # InterceptRadio specific headers
+    ir_headers = {
+        **DEFAULT_HEADERS,
+        'Referer': 'http://www.interceptradio.com/',
+    }
+    
+    results = []
+    
+    try:
+        # Direct approach: Try the specific ZIP page first
+        zip_url = f"http://www.interceptradio.com/ham.php?zip={zipcode}"
+        
+        # Use source-specific delay for InterceptRadio
+        source_delays = {
+            'repeaterbook': 2.5,  # Conservative delay for RepeaterBook
+            'qrz': 4.0,           # Longer delay for QRZ (more sensitive)
+            'intercept_radio': 2.0,  # Moderate delay for InterceptRadio
+            'radioreference': 1.0,   # Standard delay for RadioReference
+        }
+        ir_delay = source_delays.get('intercept_radio', 2.0)
+        time.sleep(random.uniform(ir_delay * 0.8, ir_delay * 1.2))
+        
+        try:
+            resp = http_get(zip_url, headers=ir_headers, timeout=20, delay=2.0)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # Parse the specific ZIP page
+            text_content = soup.get_text()
+            
+            # Look for frequency patterns in the ZIP page
+            lines = text_content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line or len(line) < 10:
+                    continue
+                    
+                # Try to extract frequency from the line
+                freq_match = re.search(r'(\d{3}\.\d{3})', line)
+                if not freq_match:
+                    continue
+                    
+                try:
+                    freq = float(freq_match.group(1))
+                    if not valid_freq(freq):
+                        continue
+                        
+                    # Extract callsign (usually at start of line)
+                    callsign_match = re.match(r'^([A-Z0-9]{1,2}[A-Z][A-Z0-9]{1,4})', line)
+                    name = callsign_match.group(1) if callsign_match else f'IR_{freq}'
+                    
+                    # Extract tone if present
+                    tone_match = re.search(r'(\d{2,3}\.\d+)', line)
+                    tone = tone_match.group(1) if tone_match and tone_match.group(1) != freq_match.group(1) else ''
+                    
+                    # Parse duplex hints
+                    duplex_hint = None
+                    offset_hint = None
+                    if '+' in line:
+                        duplex_hint = '+'
+                    elif '-' in line:
+                        duplex_hint = '-'
+                        
+                    results.append((name, freq, tone, duplex_hint, offset_hint, line))
+                    
+                except (ValueError, IndexError):
+                    continue
+                    
+            if results:
+                # Final delay
+                time.sleep(random.uniform(2.0, 4.0))
+                return results
+                
+        except Exception as e:
+            print(f"Direct ZIP page failed: {e}")
+            
+        # Fallback: Use ZIP range approach
+        zip_int = int(zipcode)
+        
+        # Determine which ZIP range page to use
+        zip_ranges = [
+            (0, 2894, 'ham00000-02894'),
+            (2895, 5827, 'ham02895-05827'),
+            (5828, 8805, 'ham05828-08805'),
+            (8807, 12531, 'ham08807-12531'),
+            (12533, 14873, 'ham12533-14873'),
+            (14874, 17615, 'ham14874-17615'),
+            (17623, 20777, 'ham17623-20777'),
+            (20778, 23885, 'ham20778-23885'),
+            (23888, 26845, 'ham23888-26845'),
+            (26846, 29021, 'ham26846-29021'),
+            (29025, 31012, 'ham29025-31012'),
+            (31013, 33136, 'ham31013-33136'),
+            (33137, 35291, 'ham33137-35291'),
+            (35324, 38015, 'ham35324-38015'),
+            (38016, 41083, 'ham38016-41083'),
+            (41086, 44310, 'ham41086-44310'),
+            (44311, 46765, 'ham44311-46765'),
+            (46766, 48837, 'ham46766-48837'),
+            (48838, 51342, 'ham48838-51342'),
+            (51345, 54763, 'ham51345-54763'),
+            (54766, 57259, 'ham54766-57259'),
+            (57262, 60661, 'ham57262-60661'),
+            (60666, 63051, 'ham60666-63051'),
+            (63052, 66221, 'ham63052-66221'),
+            (66223, 70302, 'ham66223-70302'),
+            (70310, 72904, 'ham70310-72904'),
+            (72906, 75551, 'ham72906-75551'),
+            (75554, 77650, 'ham75554-77650'),
+            (77651, 80402, 'ham77651-80402'),
+            (80403, 84521, 'ham80403-84521'),
+            (84523, 89040, 'ham84523-89040'),
+            (89041, 92325, 'ham89041-92325'),
+            (92327, 94949, 'ham92327-94949'),
+            (94950, 97041, 'ham94950-97041'),
+            (97042, 99012, 'ham97042-99012'),
+            (99013, 99955, 'ham99013-99955'),
+        ]
+        
+        range_file = None
+        for start, end, filename in zip_ranges:
+            if start <= zip_int <= end:
+                range_file = filename
+                break
+                
+        if not range_file:
+            return results
+            
+        # Fetch the ZIP range page to find the ZIP link
+        range_url = f"http://www.interceptradio.com/{range_file}.htm"
+        
+        time.sleep(random.uniform(1.5, 3.0))
+        
+        resp = http_get(range_url, headers=ir_headers, timeout=20, delay=2.0)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Find the link to the specific ZIP page
+        zip_links = soup.find_all('a', href=re.compile(rf'ham\.php\?zip={zipcode}'))
+        
+        if zip_links:
+            # Found the ZIP link, fetch that page
+            zip_page_url = f"http://www.interceptradio.com/ham.php?zip={zipcode}"
+            
+            time.sleep(random.uniform(1.5, 3.0))
+            
+            resp = http_get(zip_page_url, headers=ir_headers, timeout=20, delay=2.0)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # Parse the ZIP page
+            text_content = soup.get_text()
+            lines = text_content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line or len(line) < 10:
+                    continue
+                    
+                # Try to extract frequency from the line
+                freq_match = re.search(r'(\d{3}\.\d{3})', line)
+                if not freq_match:
+                    continue
+                    
+                try:
+                    freq = float(freq_match.group(1))
+                    if not valid_freq(freq):
+                        continue
+                        
+                    # Extract callsign (usually at start of line)
+                    callsign_match = re.match(r'^([A-Z0-9]{1,2}[A-Z][A-Z0-9]{1,4})', line)
+                    name = callsign_match.group(1) if callsign_match else f'IR_{freq}'
+                    
+                    # Extract tone if present
+                    tone_match = re.search(r'(\d{2,3}\.\d+)', line)
+                    tone = tone_match.group(1) if tone_match and tone_match.group(1) != freq_match.group(1) else ''
+                    
+                    # Parse duplex hints
+                    duplex_hint = None
+                    offset_hint = None
+                    if '+' in line:
+                        duplex_hint = '+'
+                    elif '-' in line:
+                        duplex_hint = '-'
+                        
+                    results.append((name, freq, tone, duplex_hint, offset_hint, line))
+                    
+                except (ValueError, IndexError):
+                    continue
+                    
+        # Final delay
+        time.sleep(random.uniform(2.0, 4.0))
+        
+    except Exception as e:
+        print(f"InterceptRadio scrape error: {e}")
+        
+    return results
+
+
+def validate_and_deduplicate_frequencies(results):
+    """Validate and deduplicate frequency results from multiple sources.
+    
+    Args:
+        results: List of tuples (name, frequency, tone, duplex_hint, offset_hint, other_texts)
+        
+    Returns:
+        List of validated and deduplicated results
+    """
+    if not results:
+        return []
+        
+    validated_results = []
+    seen_frequencies = set()
+    seen_callsigns = set()
+    
+    for result in results:
+        if len(result) < 2:
+            continue
+            
+        name, freq, tone, duplex_hint, offset_hint, other_texts = result
+        
+        # Skip if no frequency (QRZ operator lookup results)
+        if freq is None:
+            continue
+            
+        try:
+            freq_float = float(freq)
+        except (ValueError, TypeError):
+            continue
+            
+        # Enhanced frequency validation for new sources
+        if not valid_freq(freq_float):
+            # Check if it's in known ham bands
+            ham_bands = {
+                (144.0, 148.0): '2m',
+                (222.0, 225.0): '1.25m', 
+                (420.0, 450.0): '70cm',
+                (50.0, 54.0): '6m',
+                (118.0, 136.0): '2m aircraft',
+                (136.0, 174.0): '2m marine',
+            }
+            
+            band_found = None
+            for (low, high), band in ham_bands.items():
+                if low <= freq_float <= high:
+                    band_found = band
+                    break
+                    
+            if band_found:
+                logger.info(f"Valid ham band frequency {freq_float} ({band_found}) from {name}")
+            else:
+                logger.warning(f"Invalid frequency {freq_float} from {name}, not in ham bands")
+                continue
+            
+        # Deduplicate by frequency and callsign
+        freq_key = f"{freq_float:.3f}"
+        callsign_key = name.upper().strip() if name else ''
+        
+        dup_key = (freq_key, callsign_key)
+        if dup_key in seen_frequencies:
+            logger.debug(f"Duplicate frequency/callsign {dup_key}, skipping")
+            continue
+            
+        seen_frequencies.add(dup_key)
+        seen_callsigns.add(callsign_key)
+        
+        # Validate and clean tone
+        if tone:
+            tone = str(tone).strip()
+            # Remove invalid tone values
+            if not tone or tone.lower() in ('none', 'n/a', ''):
+                tone = ''
+                
+        # Clean and validate other fields
+        clean_name = str(name).strip()[:50] if name else f'Unknown_{freq_float}'
+        clean_other = str(other_texts).strip()[:200] if other_texts else ''
+        
+        validated_results.append((clean_name, freq_float, tone, duplex_hint, offset_hint, clean_other))
+        
+    logger.info(f"Validated {len(results)} results to {len(validated_results)} unique entries")
+    return validated_results
+
+
 def get_defaults_for_freq(freq):
     """Return pre-loaded defaults for common public-frequency bands if available."""
     try:
@@ -1594,15 +2329,6 @@ def launch_gui_and_run(default_pages, output_path):
         safe_profile = _normalize_export_filename(profile_name or 'profile')
         base_name = _compute_export_filename(source_name, model_raw, bands)
         return base_name.replace('.csv', f'_{safe_profile}.csv')
-
-    def _row_score(row):
-        score = 0
-        for field in ('Name', 'Comment', 'Tone', 'rToneFreq', 'cToneFreq', 'DtcsCode', 'Duplex', 'Offset'):
-            if row.get(field):
-                score += 1
-        score += len(str(row.get('Name','')))
-        score += len(str(row.get('Comment','')))
-        return score
 
     def _dedupe_export_rows(rows):
         grouped = {}
@@ -1954,6 +2680,98 @@ def launch_gui_and_run(default_pages, output_path):
         themesmenu.add_command(label=tname, command=lambda n=tname: apply_theme(n))
     filemenu.add_cascade(label='Themes', menu=themesmenu)
     menubar.add_cascade(label='File', menu=filemenu)
+    
+    # Callsign search menu
+    callsignmenu = tk.Menu(menubar, tearoff=0)
+    
+    def show_callsign_search():
+        search_window = tk.Toplevel(root)
+        search_window.title('Callsign Search - QRZ Database')
+        center_and_clamp(search_window, 500, 400)
+        search_window.resizable(False, False)
+        
+        # Main frame
+        main_frame = tk.Frame(search_window, padx=20, pady=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Title
+        tk.Label(main_frame, text='QRZ Callsign Lookup', 
+                font=('Arial', 12, 'bold')).pack(pady=(0, 15))
+        
+        # Callsign input
+        input_frame = tk.Frame(main_frame)
+        input_frame.pack(fill='x', pady=10)
+        
+        tk.Label(input_frame, text='Callsign:', font=('Arial', 10)).pack(side='left', padx=(0, 10))
+        callsign_var = tk.StringVar()
+        callsign_entry = tk.Entry(input_frame, textvariable=callsign_var, font=('Arial', 10), width=15)
+        callsign_entry.pack(side='left')
+        callsign_entry.focus()
+        
+        # Search button
+        search_btn = tk.Button(input_frame, text='Search QRZ', command=lambda: perform_search(), 
+                             font=('Arial', 10), width=12)
+        search_btn.pack(side='left', padx=10)
+            
+        # Results area
+        results_frame = tk.Frame(main_frame)
+        results_frame.pack(fill='both', expand=True, pady=15)
+        
+        tk.Label(results_frame, text='QRZ Operator Information:', font=('Arial', 10, 'bold')).pack(anchor='w')
+        
+        # Results text widget with scrollbar
+        results_container = tk.Frame(results_frame)
+        results_container.pack(fill='both', expand=True)
+        
+        scrollbar = tk.Scrollbar(results_container)
+        scrollbar.pack(side='right', fill='y')
+        
+        results_text = tk.Text(results_container, height=12, width=50, 
+                            yscrollcommand=scrollbar.set, font=('Courier', 9))
+        results_text.pack(side='left', fill='both', expand=True)
+        scrollbar.config(command=results_text.yview)
+        
+        # Simplified search function - QRZ only
+        def perform_search():
+            callsign = callsign_var.get().strip().upper()
+            
+            if not callsign:
+                messagebox.showwarning('Input Required', 'Please enter a callsign.')
+                return
+                
+            results_text.delete(1.0, tk.END)
+            results_text.insert(tk.END, f'Searching QRZ for {callsign}...\n\n')
+            search_window.update()
+            
+            try:
+                qrz_results = scrape_qrz_gridmapper(callsign=callsign)
+                
+                if qrz_results:
+                    results_text.insert(tk.END, f'✓ Found information for {callsign}\n\n')
+                    for name, freq, tone, duplex, offset, notes in qrz_results:
+                        results_text.insert(tk.END, f'{name}\n')
+                        if freq:
+                            results_text.insert(tk.END, f'  Frequency: {freq} MHz\n')
+                        if tone:
+                            results_text.insert(tk.END, f'  Tone: {tone}\n')
+                        if notes:
+                            results_text.insert(tk.END, f'  Notes: {notes}\n')
+                        results_text.insert(tk.END, '\n')
+                else:
+                    results_text.insert(tk.END, f'No information found for {callsign}\n')
+                    results_text.insert(tk.END, 'Note: QRZ requires login for detailed operator data.\n')
+                    
+            except Exception as e:
+                results_text.insert(tk.END, f'Error searching QRZ: {str(e)}\n')
+            
+            results_text.see(tk.END)
+        
+        # Enter key binding
+        callsign_entry.bind('<Return>', lambda e: perform_search())
+        
+    callsignmenu.add_command(label='Search Callsign...', command=show_callsign_search)
+    menubar.add_cascade(label='Callsign', menu=callsignmenu)
+    
     helpmenu = tk.Menu(menubar, tearoff=0)
     
     # Getting Started / Quick Guide
@@ -2619,9 +3437,9 @@ def launch_gui_and_run(default_pages, output_path):
         tk.Label(radio_scrollable_frame, text='Data Source:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 5))
         source_var = tk.StringVar(value=preferences_data['selected_source'].get())
         source_combo = ttk.Combobox(radio_scrollable_frame, textvariable=source_var, state='readonly', width=40)
-        source_combo['values'] = ['RadioReference', 'Radio Browser']
+        source_combo['values'] = ['RadioReference', 'Radio Browser', 'RepeaterBook', 'QRZ Database', 'InterceptRadio']
         source_combo.pack(fill='x', padx=10, pady=(5, 10))
-        source_desc_var = tk.StringVar(value='Choose RadioReference for repeater/emergency exports or Radio Browser for FM broadcast programming.')
+        source_desc_var = tk.StringVar(value='Choose data source: RadioReference (repeater/emergency), Radio Browser (FM broadcast), RepeaterBook (ham repeaters), QRZ Database (operator lookup), or InterceptRadio (ZIP-based ham frequencies).')
         source_desc_label = tk.Label(radio_scrollable_frame, textvariable=source_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
         source_desc_label.pack(anchor='w', padx=10, pady=(0, 15))
 
@@ -2689,6 +3507,21 @@ def launch_gui_and_run(default_pages, output_path):
         
         model_combo.bind('<<ComboboxSelected>>', update_model_display)
         update_model_display()  # Initial display
+        
+        # Add source selection handler for new sources
+        def update_source_description(*args):
+            selected_source = source_var.get()
+            source_descriptions = {
+                'RadioReference': 'RadioReference for repeater/emergency exports or Radio Browser for FM broadcast programming.',
+                'Radio Browser': 'Radio Browser for FM broadcast programming.',
+                'RepeaterBook': 'RepeaterBook for ham repeater databases.',
+                'QRZ Database': 'QRZ Database for ham operator lookup.',
+                'InterceptRadio': 'InterceptRadio for ZIP-based ham frequencies.'
+            }
+            source_desc_var.set(source_descriptions.get(selected_source, 'Select a data source.'))
+        
+        source_combo.bind('<<ComboboxSelected>>', update_source_description)
+        update_source_description()  # Initial display
         
         radio_canvas.pack(side='left', fill='both', expand=True)
         radio_scrollbar.pack(side='right', fill='y')
@@ -2940,9 +3773,7 @@ def launch_gui_and_run(default_pages, output_path):
         tk.Button(button_frame, text='Cancel', command=on_cancel, width=12, font=('Arial', 10)).pack(side='right', padx=5)
 
     
-    prefmenu = tk.Menu(menubar, tearoff=0)
-    prefmenu.add_command(label='Radio & Export Settings', command=open_preferences)
-    menubar.add_cascade(label='Preferences', menu=prefmenu)
+    # Remove Preferences from menubar - keep Advanced Settings in File menu
 
     filemenu.add_command(label='Advanced Settings...', command=open_preferences)
 
@@ -2963,7 +3794,7 @@ def launch_gui_and_run(default_pages, output_path):
         dlg = tk.Toplevel(root)
         dlg.title('Welcome to FreqFinder')
         dlg.resizable(False, False)
-        center_and_clamp(dlg, 580, 340)
+        center_and_clamp(dlg, 580, 390)
         dlg.grab_set()
         dlg.transient(root)
         dlg.lift()
@@ -3001,12 +3832,12 @@ def launch_gui_and_run(default_pages, output_path):
                  wraplength=200, justify='left', bg='#f8fafc', fg='#475569', font=('Arial', 9)).pack(anchor='w', pady=(10, 14))
         tk.Button(right, text='Donate Now', bg='#2563eb', fg='white', font=('Arial', 10, 'bold'), width=20,
                   command=lambda: [dlg.destroy(), open_donations()]).pack(anchor='w')
-        tk.Button(right, text='View GitHub', command=open_github, width=20).pack(anchor='w', pady=(10, 0))
+        tk.Button(right, text='View GitHub', bg='#64748b', fg='white', font=('Arial', 10, 'bold'), width=20,
+                  command=open_github).pack(anchor='w', pady=(10, 0))
 
         footer = tk.Frame(dlg)
         footer.pack(fill='x', padx=18, pady=(0, 14))
         tk.Button(footer, text='Get Started', command=dlg.destroy, bg='#10b981', fg='white', font=('Arial', 10, 'bold'), width=14).pack(side='right')
-        tk.Button(footer, text='Donate', command=lambda: [dlg.destroy(), open_donations()], bg='#2563eb', fg='white', font=('Arial', 10, 'bold'), width=14).pack(side='right', padx=8)
 
     if not persistent_settings.get('disable_startup_tips', 0):
         root.after(500, show_welcome_dialog)
@@ -3365,11 +4196,12 @@ def launch_gui_and_run(default_pages, output_path):
 
     band_vars = {}
     emergency_filter_vars = {}
-    band_listbox = tk.Listbox(page_frames['AM'], height=8)
-    band_listbox.grid(row=0, column=1, rowspan=5, sticky='n', padx=8, pady=4)
+    band_listbox = tk.Listbox(page_frames['Ham-SSB/AM'], height=8)
+    band_listbox.grid(row=0, column=0, rowspan=10, sticky='n', padx=8, pady=4)
     ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
     ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
-    tk.Label(page_frames['AM'], text='High-quality AM repeater selection: best used with one ZIP code for local coverage.', font=('Arial', 9), fg='#555').grid(row=5, column=0, columnspan=2, sticky='w', padx=10, pady=(4, 0))
+    
+    tk.Label(page_frames['Ham-SSB/AM'], text='High-quality frequency band selection: best used with one ZIP code for local coverage.', font=('Arial', 9), fg='#555').grid(row=10, column=0, columnspan=3, sticky='w', padx=10, pady=(4, 0))
 
     drag_data = {'item': None, 'index': None}
     def on_band_drag_start(event):
@@ -3443,6 +4275,16 @@ def launch_gui_and_run(default_pages, output_path):
         band_listbox.selection_set(i+1)
         update_band_preview_and_summary()
 
+    # Add Up/Down buttons to Ham-SSB/AM page (now that functions are defined)
+    band_control_frame = tk.Frame(page_frames['Ham-SSB/AM'])
+    band_control_frame.grid(row=0, column=1, sticky='n', padx=4, pady=4)
+    up_btn = tk.Button(band_control_frame, text='Up', command=move_up, width=6, height=2)
+    up_btn.grid(row=0, column=0, padx=2, pady=2)
+    ToolTip(up_btn, 'Move selected band up in priority')
+    down_btn = tk.Button(band_control_frame, text='Down', command=move_down, width=6, height=2)
+    down_btn.grid(row=1, column=0, padx=2, pady=2)
+    ToolTip(down_btn, 'Move selected band down in priority')
+
     search_frame = tk.Frame(zip_frame)
     search_frame.grid(row=input_start_row + len(input_vars), column=0, sticky='w', padx=4, pady=(12, 2))
     tk.Label(search_frame, text='Filter bands:').grid(row=0, column=0, sticky='w')
@@ -3460,15 +4302,7 @@ def launch_gui_and_run(default_pages, output_path):
     scope_only_cb.grid(row=2, column=0, columnspan=2, sticky='w', pady=(4,0))
     ToolTip(scope_only_cb, 'When enabled, only rows matching the locality keywords will be returned')
 
-    control_frame = tk.Frame(search_frame)
-    control_frame.grid(row=0, column=2, sticky='w', padx=(8, 0))
-    up_btn = tk.Button(control_frame, text='Up', command=move_up, width=4)
-    up_btn.grid(row=0, column=0, padx=2)
-    ToolTip(up_btn, 'Move selected band up in priority')
-    down_btn = tk.Button(control_frame, text='Down', command=move_down, width=4)
-    down_btn.grid(row=0, column=1, padx=2)
-    ToolTip(down_btn, 'Move selected band down in priority')
-
+    
     frs_unlock_var = preferences_data.get('frs_gmrs_unlock') if preferences_data.get('frs_gmrs_unlock') else tk.IntVar(value=0)
     frs_unlock_cb = tk.Checkbutton(search_frame, text='Ensure FRS/GMRS unlocked & enable bandplan', variable=frs_unlock_var)
     frs_unlock_cb.grid(row=1, column=0, columnspan=3, sticky='w', pady=(8, 0))
@@ -3484,8 +4318,10 @@ def launch_gui_and_run(default_pages, output_path):
     export_summary_frame = tk.LabelFrame(root, text='Export Summary', padx=4, pady=4)
     export_summary_frame.grid(row=start_row+2, column=2, columnspan=2, rowspan=2, sticky='nsew', padx=4, pady=2)
     root.grid_rowconfigure(start_row+2, weight=1)
-    export_summary_label = tk.Label(export_summary_frame, text='', justify='left', anchor='nw', font=('Arial', 9))
-    export_summary_label.pack(fill='both', expand=True)
+    export_summary_text = tk.Text(export_summary_frame, height=10, width=40, wrap='word', font=('Arial', 9))
+    export_summary_text.pack(fill='both', expand=True)
+    export_summary_scrollbar = tk.Scrollbar(export_summary_frame, command=export_summary_text.yview)
+    export_summary_text.config(yscrollcommand=export_summary_scrollbar.set)
 
     def update_band_preview_and_summary():
         bands = get_selected_band_order()
@@ -3512,6 +4348,7 @@ def launch_gui_and_run(default_pages, output_path):
                 lines.append('Emergency filter active: no emergency types selected')
         if any(b in ('2m','70cm','1.25m') for b in bands):
             lines.append('Repeater bands: area-specific channels from RadioReference')
+            lines.append('Note: Same callsign with different frequencies = separate repeaters or modes')
         lines.append('')
         lines.append(f'Profile: {profile_var.get() or "None"}')
         lines.append(f'Scanner mode: {"On" if preferences_data.get("scanner_mode").get() else "Off"}')
@@ -3544,7 +4381,10 @@ def launch_gui_and_run(default_pages, output_path):
         band_preview_text.delete('1.0', 'end')
         band_preview_text.insert('1.0', '\n'.join(lines))
         band_preview_text.config(state='disabled')
-        export_summary_label.config(text='\n'.join(summary_lines))
+        export_summary_text.config(state='normal')
+        export_summary_text.delete('1.0', 'end')
+        export_summary_text.insert('1.0', '\n'.join(summary_lines))
+        export_summary_text.config(state='disabled')
 
     def refresh_ui_state(*args):
         update_band_preview_and_summary()
@@ -3567,12 +4407,26 @@ def launch_gui_and_run(default_pages, output_path):
             v = tk.IntVar(value=1 if band in ('70cm', '2m') else 0)
             band_vars[band] = v
             cb = tk.Checkbutton(frame, text=band, variable=v, command=lambda b=band: toggle_band(b))
-            cb.grid(row=j, column=0, sticky='w', padx=10, pady=6)
+            # For Ham-SSB/AM page, stack frequency enable checkboxes in column 2
+            if page_title == 'Ham-SSB/AM':
+                cb.grid(row=j, column=2, sticky='w', padx=10, pady=4)
+            else:
+                cb.grid(row=j, column=0, sticky='w', padx=10, pady=4)
             band_checkbuttons[band] = cb
-            if band == '70cm':
-                ToolTip(cb, '70cm band (420-450 MHz)\nUltra High Frequency - local area coverage')
+            if band == '10m':
+                ToolTip(cb, '10m band (28.0-29.7 MHz)\nHigh Frequency - long-distance communication')
+            elif band == '6m':
+                ToolTip(cb, '6m band (50.0-54.0 MHz)\nMedium Frequency - extended range coverage')
             elif band == '2m':
                 ToolTip(cb, '2m band (144-148 MHz)\nVery High Frequency - wider area coverage')
+            elif band == '1.25m':
+                ToolTip(cb, '1.25m band (222-225 MHz)\n220 MHz band - local repeater coverage')
+            elif band == '70cm':
+                ToolTip(cb, '70cm band (420-450 MHz)\nUltra High Frequency - local area coverage')
+            elif band == '33cm':
+                ToolTip(cb, '33cm band (902-928 MHz)\n900 MHz band - short-range communication')
+            elif band == '23cm':
+                ToolTip(cb, '23cm band (1240-1300 MHz)\n1.2 GHz band - very short-range communication')
             elif band == 'NOAA':
                 ToolTip(cb, 'NOAA Weather Alerts (162.4-162.55 MHz)\nPublic weather radio broadcasts')
             elif band == 'MURS':
@@ -3600,17 +4454,6 @@ def launch_gui_and_run(default_pages, output_path):
         apply_profile(last_profile_name)
         profile_var.set(last_profile_name)
     update_band_preview_and_summary()
-
-    def move_up():
-        sel = band_listbox.curselection()
-        if not sel: return
-        i = sel[0]
-        if i == 0: return
-        txt = band_listbox.get(i)
-        band_listbox.delete(i)
-        band_listbox.insert(i-1, txt)
-        band_listbox.selection_set(i-1)
-        update_band_preview_and_summary()
 
     # Export button (centered at bottom)
     def on_export():
@@ -3795,11 +4638,42 @@ def launch_gui_and_run(default_pages, output_path):
         for label, u, zip_code in page_entries:
             try:
                 page_rows = list(fetch_freqs_for_page(u))
+                
+                # Try additional sources if RadioReference returns no results
                 if not page_rows and zip_code:
-                    zip_search = f'https://www.radioreference.com/db/search/?zip={zip_code}'
-                    page_rows = list(fetch_freqs_for_page(zip_search))
+                    all_source_results = []
+                    
+                    # Try RepeaterBook
+                    try:
+                        rb_rows = scrape_repeaterbook(zipcode=zip_code)
+                        if rb_rows:
+                            all_source_results.extend(rb_rows)
+                            logger.info(f"RepeaterBook found {len(rb_rows)} results for {zip_code}")
+                    except Exception as e:
+                        logger.error(f"RepeaterBook failed: {e}")
+                    
+                    # Try InterceptRadio
+                    try:
+                        ir_rows = scrape_intercept_radio(zip_code)
+                        if ir_rows:
+                            all_source_results.extend(ir_rows)
+                            logger.info(f"InterceptRadio found {len(ir_rows)} results for {zip_code}")
+                    except Exception as e:
+                        logger.error(f"InterceptRadio failed: {e}")
+                    
+                    # Validate and deduplicate all results
+                    if all_source_results:
+                        validated_results = validate_and_deduplicate_frequencies(all_source_results)
+                        page_rows.extend(validated_results)
+                        logger.info(f"Total unique validated results: {len(validated_results)}")
+                    
+                    # Fallback to RadioReference ZIP search
+                    if not page_rows:
+                        zip_search = f'https://www.radioreference.com/db/search/?zip={zip_code}'
+                        page_rows = list(fetch_freqs_for_page(zip_search))
+                        
                 if not page_rows:
-                    fetch_errors.append((label, u, 'No repeater rows returned'))
+                    fetch_errors.append((label, u, 'No repeater rows returned from any source'))
                 filtered_rows = []
                 for tup in page_rows:
                     if len(tup) >= 6:
@@ -3933,7 +4807,7 @@ def launch_gui_and_run(default_pages, output_path):
             if quality_target:
                 target_capacity = max(int(max_channels * 0.8), 1)
                 remaining_slots = min(remaining_slots, target_capacity)
-            rows.extend(select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order, prioritize_quality=quality_target))
+            rows.extend(select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order, prioritize_quality=quality_target, model_info=model_obj))
             for pr in page_results:
                 if pr['zip'] is None:
                     rows.extend(pr['rows'])
