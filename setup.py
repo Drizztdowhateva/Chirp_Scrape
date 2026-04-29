@@ -9,7 +9,7 @@ if reqs.exists():
 
 setup(
     name='FreqFinder',
-    version='0.7.0',
+    version='2.0.0',
     description='RadioReference FreqFinder scraper',
     author='Tim Rohe',
     py_modules=['freqfinder', 'make_radioref_list'],

@@ -258,6 +258,16 @@ See `README.txt` for additional project notes.
 
 **Advertising & Media:** Advertising copy and media (including the Facebook advert) are available in the `Advert/` folder. See `Advert/Facebook.md` for Facebook-specific ad content.
 
+## References & Acknowledgements 📚
+
+This project relies on and is inspired by the following resources:
+
+- **RadioReference.com** — frequency database (https://www.radioreference.com)
+- **CHIRP** — open-source radio programming software (https://chirp.danplanet.com)
+  - GitHub repo owner: Dan Smith (KK7DS) — https://github.com/kk7ds/chirp
+  - Lead developer/maintainer: Jim Unroe (KC9HI)
+- **John Miklor (WA9QJV)** — comprehensive CHIRP programming guides & Baofeng resources (https://www.miklor.com/CHIRP/index.php)
+
 ## License ⚖️
 
 This project is licensed under the MIT License. See the [`LICENSE`](LICENSE) file for full terms.
