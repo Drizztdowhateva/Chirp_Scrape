@@ -1358,7 +1358,7 @@ def get_county_from_zip(zip_code):
 
 
 def get_zip_state(zipcode):
-    """Return the U.S. state name for a ZIP code."""
+    """Return's U.S. state name for a ZIP code."""
     try:
         r = http_get(f'http://api.zippopotam.us/us/{zipcode}', timeout=8)
         if r.status_code == 200:
@@ -1368,8 +1368,13 @@ def get_zip_state(zipcode):
                 return None
             return places[0].get('state')
         else:
-            # ZIP not found in API
-            return None
+            # ZIP not found in API - check if it's a valid US ZIP format
+            if len(zipcode) == 5 and zipcode.isdigit():
+                # Valid ZIP format but not found, return None for fallback
+                return None
+            else:
+                # Invalid ZIP format
+                return None
     except Exception:
         return None
 
