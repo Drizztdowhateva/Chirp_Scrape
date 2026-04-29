@@ -1079,7 +1079,11 @@ def build_radioreference_page_entries(tokens, rr_index=None):
                                     if ctid:
                                         label = f"{county}, {state} ({tok})"
                                         url = f'https://www.radioreference.com/db/browse/ctid/{ctid}/ham'
-                except Exception:
+                    elif pr.status_code == 404:
+                        # ZIP not found in zippopotam, silently continue with fallback
+                        pass
+                except Exception as e:
+                    # Silently handle API errors - fallback to basic ZIP search
                     pass
             entries.append((label, url, zip_code))
             continue
@@ -1305,8 +1309,13 @@ def get_county_from_zip(zip_code):
 
     # fallback: try to resolve county via zippopotam.us -> reverse geocode -> local index -> search RR
     try:
-        place = http_get(f'http://api.zippopotam.us/us/{zip_code}', timeout=8).json()
-        places = place.get('places', [])
+        response = http_get(f'http://api.zippopotam.us/us/{zip_code}', timeout=8)
+        if response.status_code == 200:
+            place = response.json()
+            places = place.get('places', [])
+        else:
+            # ZIP not found, skip this fallback
+            places = []
         if places:
             lat = places[0].get('latitude')
             lon = places[0].get('longitude')
@@ -1352,11 +1361,15 @@ def get_zip_state(zipcode):
     """Return the U.S. state name for a ZIP code."""
     try:
         r = http_get(f'http://api.zippopotam.us/us/{zipcode}', timeout=8)
-        pj = r.json()
-        places = pj.get('places', [])
-        if not places:
+        if r.status_code == 200:
+            pj = r.json()
+            places = pj.get('places', [])
+            if not places:
+                return None
+            return places[0].get('state')
+        else:
+            # ZIP not found in API
             return None
-        return places[0].get('state')
     except Exception:
         return None
 
@@ -3951,8 +3964,12 @@ def launch_gui_and_run(default_pages, output_path):
             v = zip_tokens[0]
             try:
                 pr = http_get(f'http://api.zippopotam.us/us/{v}', timeout=6)
-                pj = pr.json()
-                places = pj.get('places', [])
+                if pr.status_code == 200:
+                    pj = pr.json()
+                    places = pj.get('places', [])
+                else:
+                    # ZIP not found, use basic ZIP search
+                    places = []
                 if places:
                     lat = places[0].get('latitude')
                     lon = places[0].get('longitude')
