@@ -432,6 +432,9 @@ PAGE_BAND_GROUPS = [
     ('Emergency', ['Emergency']),
 ]
 
+# Group HAM bands together for better organization
+HAM_BANDS = ['10m', '6m', '2m', '1.25m', '70cm', '33cm', '23cm']
+
 DEFAULT_BAND_PROFILES = {
     'Emergency Comms': {
         'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
@@ -4429,9 +4432,15 @@ def launch_gui_and_run(default_pages, output_path):
             v = tk.IntVar(value=1 if band in ('70cm', '2m') else 0)
             band_vars[band] = v
             cb = tk.Checkbutton(frame, text=band, variable=v, command=lambda b=band: toggle_band(b))
-            # For Ham-SSB/AM page, stack frequency enable checkboxes in column 2
+            
+            # For Ham-SSB/AM page, organize HAM bands together with proper spacing
             if page_title == 'Ham-SSB/AM':
-                cb.grid(row=j, column=2, sticky='w', padx=10, pady=4)
+                if band in HAM_BANDS:
+                    # Group HAM bands in first column with horizontal spacing
+                    cb.grid(row=j, column=0, sticky='w', padx=10, pady=(4 if j == 0 else 2))
+                else:
+                    # Non-HAM bands in second column
+                    cb.grid(row=j, column=2, sticky='w', padx=10, pady=(4 if j == 0 else 2))
             else:
                 cb.grid(row=j, column=0, sticky='w', padx=10, pady=4)
             band_checkbuttons[band] = cb
