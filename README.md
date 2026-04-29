@@ -7,7 +7,10 @@ Welcome to FreqFinder v2.0 — the latest release focused on cleaner export work
 
 This project uses a small index file, `radioref.csv`, to map RadioReference CTID pages (county/city titles) to their numeric CTID IDs. This file is required for ZIP-to-CTID mapping in the GUI and for accurate RadioReference lookups.
 
-**If `radioref.csv` is missing or outdated, please see the [Troubleshooting](#troubleshooting) section below.**
+**If `radioref.csv` is missing or outdated, update it with:**
+```bash
+./.venv/bin/python make_radioref_list.py --start-id 1 --max-id 3000 --append
+```
 
 **📚 Documentation**: See [docs/README_ENHANCEMENTS.md](docs/README_ENHANCEMENTS.md) for complete feature documentation, and [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and updates.
 
