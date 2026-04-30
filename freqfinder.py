@@ -4883,6 +4883,7 @@ def launch_gui_and_run(default_pages, output_path):
                 rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
 
         # Add local calling frequencies when Local Calling Frequencies is enabled
+        calling_freq_rows = []
         if scope_only_var.get() and any(band in sel_bands for band in ['2m', '70cm', '1.25m']):
             for entry in LOCAL_CALLING_FREQS:
                 name, f, duplex, tone = entry
@@ -4890,11 +4891,11 @@ def launch_gui_and_run(default_pages, output_path):
                 try:
                     freq_float = float(f)
                     if 144.0 <= freq_float <= 148.0 and '2m' in sel_bands:
-                        rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '2m'})
+                        calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '2m'})
                     elif 420.0 <= freq_float <= 450.0 and '70cm' in sel_bands:
-                        rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '70cm'})
+                        calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '70cm'})
                     elif 222.0 <= freq_float <= 225.0 and '1.25m' in sel_bands:
-                        rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '1.25m'})
+                        calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '1.25m'})
                 except Exception:
                     continue
 
@@ -4908,6 +4909,30 @@ def launch_gui_and_run(default_pages, output_path):
                     f'{removed} channel(s) were removed because they are outside the selected model ({model_obj.get("name")}) frequency range.'
                 )
 
+        # Add calling frequencies to the beginning of each ZIP code group
+        if calling_freq_rows and zip_order:
+            # Insert calling frequencies at the beginning of each ZIP code's results
+            for zip_code in zip_order:
+                if zip_code in zip_rows:
+                    # Insert calling frequencies at the start of this ZIP's rows
+                    zip_rows[zip_code] = calling_freq_rows + zip_rows[zip_code]
+            
+            # Rebuild rows list with calling frequencies properly positioned and ZIP separators
+            rows = []
+            for i, zip_code in enumerate(zip_order):
+                if zip_code in zip_rows:
+                    # Add ZIP code separator (except for first ZIP)
+                    if i > 0:
+                        rows.append({
+                            'Name': f'--- ZIP Code {zip_code} ---',
+                            'Frequency': '',
+                            'Duplex': '',
+                            'Tone': '',
+                            'Comment': 'ZIP Code Separator',
+                            'Band': 'Separator'
+                        })
+                    rows.extend(zip_rows[zip_code])
+
         rows = _dedupe_export_rows(rows)
 
         def numeric_frequency(value):
@@ -4918,8 +4943,17 @@ def launch_gui_and_run(default_pages, output_path):
 
         selected_emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
 
+        # Sort by band order, then by frequency (calling frequencies already at top)
         band_order = {b: i for i, b in enumerate(sel_bands)}
-        rows.sort(key=lambda r: (band_order.get(r.get('Band'), 999), numeric_frequency(r.get('Frequency', 0))))
+        def sort_key(r):
+            # Calling frequencies stay at top (already positioned)
+            if r.get('Comment') == 'Local Calling':
+                return (0, numeric_frequency(r.get('Frequency', 0)))
+            # Then sort by band order
+            band_order_val = band_order.get(r.get('Band'), 999)
+            return (1, band_order_val, numeric_frequency(r.get('Frequency', 0)))
+        
+        rows.sort(key=sort_key)
 
         deduped = []
         seen_keys = set()
@@ -4973,6 +5007,11 @@ def launch_gui_and_run(default_pages, output_path):
             raw_text = r.get('RawText','') or ''
             freq = r.get('Frequency','')
             band = r.get('Band','')
+            
+            # Skip separator rows
+            if band == 'Separator':
+                continue
+                
             duplex = '+' if (isinstance(freq, (int,float)) and freq >= 147) else '-' if isinstance(freq, (int,float)) and freq < 147 else ''
             offset = compute_offset_local(freq) if duplex == '+' else ''
             tone_label, rTone, cTone = parse_tone_local(r.get('Tone',''))
@@ -5043,7 +5082,7 @@ def launch_gui_and_run(default_pages, output_path):
                 if c not in outdf.columns:
                     outdf[c] = ''
             outdf = outdf[cols]
-            outdf.index = [f"{i:03d}" for i in range(2, len(outdf)+2)]
+            outdf.index = [f"{i:03d}" for i in range(1, len(outdf)+1)]
             outdf.index.name = 'Location'
             exported_data['export_stats'] = _format_export_statistics(stats_df)
             exported_data['dataframe'] = outdf
