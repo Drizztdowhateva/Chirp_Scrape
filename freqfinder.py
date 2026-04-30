@@ -375,6 +375,20 @@ except Exception:
 # FRS/GMRS fixed channels are provided in csv_files/FRS_GMRS_freq.csv
 FRS_GMRS_CSV = os.path.join(os.path.dirname(__file__), 'csv_files', 'FRS_GMRS_freq.csv')
 FRS_GMRS_FREQS = []
+
+# Local calling frequencies for HAM bands
+LOCAL_CALLING_FREQS = [
+    # 2m calling frequencies
+    ('National Simplex Calling Frequency', '146.520', '', ''),
+    ('Regional Calling 1', '146.550', '', ''),
+    ('Regional Calling 2', '146.580', '', ''),
+    # 70cm calling frequencies  
+    ('National UHF Simplex', '446.000', '', ''),
+    ('UHF Calling 1', '446.025', '', ''),
+    ('UHF Calling 2', '446.050', '', ''),
+    # 1.25m calling frequency
+    ('220 MHz Calling', '223.500', '', ''),
+]
 try:
     import csv as _csv
     with open(FRS_GMRS_CSV, newline='', encoding='utf-8') as _fh:
@@ -425,7 +439,7 @@ BAND_RANGES = {
 }
 
 PAGE_BAND_GROUPS = [
-    ('Zip Code Freq Finder', []),
+    ('Zip Code', []),
     ('Ham-SSB/AM', ['10m', '6m', '2m', '1.25m', '70cm', '33cm', '23cm']),
     ('MURS', ['MURS']),
     ('GMRS/FRS', ['FRS/GMRS']),
@@ -3927,7 +3941,7 @@ def launch_gui_and_run(default_pages, output_path):
         band_tabs.add(frame, text=title)
         page_frames[title] = frame
 
-    zip_frame = tk.Frame(page_frames['Zip Code Freq Finder'])
+    zip_frame = tk.Frame(page_frames['Zip Code'])
     zip_frame.pack(fill='both', expand=True, padx=8, pady=8)
 
     # load radioref index (map normalized 'county, state' -> ctid)
@@ -4017,11 +4031,11 @@ def launch_gui_and_run(default_pages, output_path):
             iv.set(last_zips[i-1])
 
         label = tk.Label(zip_frame, text=f'Zip Code {i}:')
-        label.grid(row=input_start_row + i-1, column=0, sticky='w', padx=4, pady=2)
+        label.grid(row=input_start_row + i-1, column=0, sticky='e', padx=(4, 50), pady=2)
         ToolTip(label, 'Enter a 5-digit ZIP code or RadioReference URL\nto search for frequencies in that area')
         
         ent = tk.Entry(zip_frame, textvariable=iv, width=14)
-        ent.grid(row=input_start_row + i-1, column=1, sticky='w', padx=4, pady=2)
+        ent.grid(row=input_start_row + i-1, column=1, sticky='w', padx=0, pady=2)
         ToolTip(ent, 'ZIP Code: Searches for repeaters in that area\nURL: Directly uses RadioReference page\nBand tokens like 2m, 70cm, 1.25m, NOAA, Emergency are recognized and applied as selected bands.')
         
         resolved_lbl = tk.Label(zip_frame, textvariable=resolved_labels[i-1], anchor='w', fg='#666666', wraplength=320, justify='left')
@@ -4322,7 +4336,7 @@ def launch_gui_and_run(default_pages, output_path):
     scope_entry.grid(row=1, column=1, sticky='w', padx=(4,0), pady=(4,0))
     ToolTip(scope_entry, 'Enter preferred locality keywords to rank nearby channels higher. Examples: Evanston, Skokie, Rogers Park')
 
-    scope_only_cb = tk.Checkbutton(search_frame, text='Local only', variable=scope_only_var,
+    scope_only_cb = tk.Checkbutton(search_frame, text='Local Calling Frequencies', variable=scope_only_var,
                                    command=lambda: update_band_preview_and_summary())
     scope_only_cb.grid(row=2, column=0, columnspan=2, sticky='w', pady=(4,0))
     ToolTip(scope_only_cb, 'When enabled, only rows matching the locality keywords will be returned')
@@ -4436,11 +4450,11 @@ def launch_gui_and_run(default_pages, output_path):
             # For Ham-SSB/AM page, organize HAM bands together with proper spacing
             if page_title == 'Ham-SSB/AM':
                 if band in HAM_BANDS:
-                    # Group HAM bands in first column with horizontal spacing
-                    cb.grid(row=j, column=0, sticky='w', padx=10, pady=(4 if j == 0 else 2))
+                    # Group HAM bands in right column next to border, no overlap
+                    cb.grid(row=j, column=2, sticky='e', padx=(10, 20), pady=(4 if j == 0 else 2))
                 else:
-                    # Non-HAM bands in second column
-                    cb.grid(row=j, column=2, sticky='w', padx=10, pady=(4 if j == 0 else 2))
+                    # Non-HAM bands in left column
+                    cb.grid(row=j, column=0, sticky='w', padx=10, pady=(4 if j == 0 else 2))
             else:
                 cb.grid(row=j, column=0, sticky='w', padx=10, pady=4)
             band_checkbuttons[band] = cb
@@ -4867,6 +4881,22 @@ def launch_gui_and_run(default_pages, output_path):
             for entry in FRS_GMRS_FREQS:
                 name, f, duplex, tone, raw = entry
                 rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
+
+        # Add local calling frequencies when Local Calling Frequencies is enabled
+        if scope_only_var.get() and any(band in sel_bands for band in ['2m', '70cm', '1.25m']):
+            for entry in LOCAL_CALLING_FREQS:
+                name, f, duplex, tone = entry
+                # Determine which band this frequency belongs to
+                try:
+                    freq_float = float(f)
+                    if 144.0 <= freq_float <= 148.0 and '2m' in sel_bands:
+                        rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '2m'})
+                    elif 420.0 <= freq_float <= 450.0 and '70cm' in sel_bands:
+                        rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '70cm'})
+                    elif 222.0 <= freq_float <= 225.0 and '1.25m' in sel_bands:
+                        rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '1.25m'})
+                except Exception:
+                    continue
 
         if model_obj.get('frequency_ranges'):
             original_count = len(rows)
