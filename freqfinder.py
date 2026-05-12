@@ -527,6 +527,152 @@ def sort_emergency_channels_by_priority(rows, priority_order=None):
     
     return sorted(rows, key=sort_key)
 
+def get_location_based_recommendations(zip_code, profile_name=None):
+    """Get location-aware frequency recommendations based on ZIP code."""
+    recommendations = {
+        'urban_areas': {
+            'description': 'High-density areas with multiple agencies',
+            'suggested_bands': ['Emergency', '70cm', '2m'],
+            'channel_priorities': ['Police Dispatch', 'Fire Dispatch', 'EMS'],
+            'max_range_miles': 15,
+            'special_considerations': ['High-rise buildings', 'Urban canyon effects']
+        },
+        'suburban_areas': {
+            'description': 'Medium-density areas with mixed services',
+            'suggested_bands': ['Emergency', '70cm', '2m', '1.25m'],
+            'channel_priorities': ['Police Dispatch', 'Fire Dispatch', 'EMS', 'Ham Repeaters'],
+            'max_range_miles': 25,
+            'special_considerations': ['Varied terrain', 'Multiple jurisdictions']
+        },
+        'rural_areas': {
+            'description': 'Low-density areas with limited services',
+            'suggested_bands': ['Emergency', '2m', '70cm'],
+            'channel_priorities': ['Sheriff', 'Fire', 'High-power repeaters'],
+            'max_range_miles': 50,
+            'special_considerations': ['Long distance communication', 'Limited coverage']
+        },
+        'highway_corridors': {
+            'description': 'Major travel routes with mobile services',
+            'suggested_bands': ['70cm', '2m', 'Emergency'],
+            'channel_priorities': ['Highway Patrol', 'Traffic Management', 'Emergency'],
+            'max_range_miles': 20,
+            'special_considerations': ['Mobile coverage', 'Hand-off between jurisdictions']
+        }
+    }
+    
+    # Profile-specific recommendations
+    profile_recommendations = {
+        'Emergency Comms': {
+            'focus': 'Emergency services priority',
+            'exclude_bands': ['NOAA'],  # Will be auto-skipped
+            'max_channels': 100,
+            'priority_emergency_types': ['Police', 'Fire', 'EMS']
+        },
+        'Traveler': {
+            'focus': 'Mobile communication flexibility',
+            'include_bands': ['70cm', '2m', '1.25m', 'Emergency'],
+            'exclude_bands': ['NOAA'],  # Will be auto-skipped
+            'max_channels': 150,
+            'mobile_optimized': True
+        },
+        'HamScan': {
+            'focus': 'Amateur radio communication',
+            'include_bands': ['70cm', '2m', '1.25m'],
+            'exclude_bands': ['Emergency', 'NOAA'],
+            'max_channels': 200,
+            'calling_freqs_priority': True
+        }
+    }
+    
+    # ZIP code based area type detection (simplified)
+    # This would normally use a ZIP code database API
+    area_type = detect_area_type(zip_code)
+    
+    result = {
+        'zip_code': zip_code,
+        'area_type': area_type,
+        'recommendations': recommendations.get(area_type, recommendations['suburban_areas']),
+        'profile_specific': profile_recommendations.get(profile_name, {}),
+        'suggested_config': generate_suggested_config(area_type, profile_name)
+    }
+    
+    return result
+
+def detect_area_type(zip_code):
+    """Simplified area type detection based on ZIP code patterns."""
+    # This is a simplified implementation
+    # In production, this would use a ZIP code database API
+    
+    # ZIP code patterns (simplified heuristics)
+    if zip_code.startswith(('0', '1')):  # Northeast
+        return 'urban_areas'
+    elif zip_code.startswith(('2', '3')):  # Southeast
+        return 'suburban_areas'
+    elif zip_code.startswith(('4', '5')):  # Midwest
+        return 'suburban_areas'
+    elif zip_code.startswith(('6', '7')):  # Central
+        return 'urban_areas'
+    elif zip_code.startswith(('8', '9')):  # West
+        return 'rural_areas'
+    else:
+        return 'suburban_areas'  # Default
+
+def generate_suggested_config(area_type, profile_name):
+    """Generate suggested configuration based on area type and profile."""
+    area_configs = {
+        'urban_areas': {
+            'scanner_mode': True,
+            'step_size': 5.0,
+            'priority_channels': True,
+            'noaa_auto_skip': True
+        },
+        'suburban_areas': {
+            'scanner_mode': True,
+            'step_size': 5.0,
+            'priority_channels': True,
+            'noaa_auto_skip': True
+        },
+        'rural_areas': {
+            'scanner_mode': True,
+            'step_size': 12.5,  # Wider steps for rural areas
+            'priority_channels': True,
+            'noaa_auto_skip': True,
+            'extended_range': True
+        },
+        'highway_corridors': {
+            'scanner_mode': True,
+            'step_size': 5.0,
+            'priority_channels': True,
+            'noaa_auto_skip': True,
+            'mobile_optimized': True
+        }
+    }
+    
+    profile_overrides = {
+        'Emergency Comms': {
+            'focus_emergency': True,
+            'limit_ham_bands': True
+        },
+        'Traveler': {
+            'include_ham_bands': True,
+            'mobile_priority': True
+        },
+        'HamScan': {
+            'emergency_excluded': True,
+            'calling_freqs_first': True
+        }
+    }
+    
+    config = area_configs.get(area_type, area_configs['suburban_areas'])
+    overrides = profile_overrides.get(profile_name, {})
+    
+    # Merge configurations
+    result = {**config, **overrides}
+    result['area_type'] = area_type
+    result['profile_name'] = profile_name
+    
+    return result
+
 
 def _row_score(row, model_info=None):
     """Score function for ranking export rows by completeness and quality."""
