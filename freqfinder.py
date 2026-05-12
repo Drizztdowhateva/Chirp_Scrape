@@ -452,22 +452,34 @@ HAM_BANDS = ['10m', '6m', '2m', '1.25m', '70cm', '33cm', '23cm']
 
 DEFAULT_BAND_PROFILES = {
     'Emergency Comms': {
-        'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
-        'order': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
+        'bands': ['Emergency', '70cm', '1.25m', '2m', 'NOAA'],
+        'order': ['Emergency', '70cm', '1.25m', '2m', 'NOAA'],
         'emergency_types': ['Police', 'Fire', 'EMS', 'Citywide'],
         'scanner_mode': True,
+        'priority_order': ['Police', 'Fire', 'EMS', 'Citywide'],
+        'auto_skip_noaa': True,
+        'max_channels': 100,
+        'description': 'Optimized for emergency scanning with priority channels first'
     },
     'Traveler': {
         'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
         'order': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
         'emergency_types': ['Police', 'Fire', 'EMS', 'Citywide'],
         'scanner_mode': True,
+        'priority_order': ['Police', 'Fire', 'EMS', 'Citywide'],
+        'auto_skip_noaa': True,
+        'max_channels': 150,
+        'mobile_optimized': True,
+        'description': 'Mobile-friendly profile for travelers with route-based frequencies'
     },
     'HamScan': {
         'bands': ['70cm', '1.25m', '2m'],
         'order': ['70cm', '1.25m', '2m'],
         'emergency_types': [],
         'scanner_mode': True,
+        'auto_skip_noaa': False,
+        'max_channels': 200,
+        'description': 'Ham radio scanning with local calling frequencies prioritized'
     },
 }
 
@@ -489,6 +501,31 @@ def emergency_row_type(row):
             if kw in text:
                 return et
     return None
+
+def get_emergency_priority(emergency_type, priority_order=None):
+    """Get priority score for emergency type based on priority order."""
+    if priority_order is None:
+        priority_order = ['Police', 'Fire', 'EMS', 'Citywide']
+    
+    if emergency_type in priority_order:
+        return priority_order.index(emergency_type)
+    return 999  # Low priority for unknown types
+
+def sort_emergency_channels_by_priority(rows, priority_order=None):
+    """Sort emergency channels by priority order."""
+    if priority_order is None:
+        priority_order = ['Police', 'Fire', 'EMS', 'Citywide']
+    
+    def sort_key(row):
+        emergency_type = emergency_row_type(row)
+        priority = get_emergency_priority(emergency_type, priority_order)
+        
+        # Additional sorting by frequency within same priority
+        freq = float(row.get('Frequency', 0))
+        
+        return (priority, freq)
+    
+    return sorted(rows, key=sort_key)
 
 
 def _row_score(row, model_info=None):
@@ -5173,12 +5210,27 @@ def launch_gui_and_run(default_pages, output_path):
                         if not model_obj.get('supports_digital_mode') or cust_level not in ('Advanced', 'High Quality'):
                             continue
             skip_value = ''
-            if scanner_mode_enabled and profile_var.get() == 'HamScan' and band in ('Emergency', 'NOAA'):
-                skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'Emergency Comms' and band in ('2m', '70cm', '1.25m', 'NOAA'):
-                skip_value = 'S'
-            elif scanner_mode_enabled and profile_var.get() == 'Traveler' and band == 'NOAA':
-                skip_value = 'S'
+            profile_name = profile_var.get() if profile_var else None
+            profile_config = DEFAULT_BAND_PROFILES.get(profile_name, {})
+            
+            # Enhanced scanner mode logic with priority-based scanning and NOAA auto-skip
+            if scanner_mode_enabled and profile_name:
+                # NOAA auto-skip based on profile configuration
+                if profile_config.get('auto_skip_noaa', False) and band == 'NOAA':
+                    skip_value = 'S'
+                
+                # Profile-specific skip logic
+                if profile_name == 'HamScan' and band in ('Emergency', 'NOAA'):
+                    skip_value = 'S'
+                elif profile_name == 'Emergency Comms':
+                    # Skip ham bands in Emergency Comms to focus on emergency channels
+                    if band in ('2m', '70cm', '1.25m'):
+                        skip_value = 'S'
+                    # NOAA already handled by auto_skip_noaa
+                elif profile_name == 'Traveler':
+                    # Traveler profile keeps ham bands but skips NOAA
+                    # NOAA already handled by auto_skip_noaa
+                    pass
             df_rows.append({
                 'Name': name,
                 'Frequency': freq,
@@ -5200,6 +5252,35 @@ def launch_gui_and_run(default_pages, output_path):
             import pandas as pd
             outdf = pd.DataFrame(df_rows)
             stats_df = outdf.copy()
+            
+            # Apply priority-based sorting for emergency channels
+            profile_name = profile_var.get() if profile_var else None
+            profile_config = DEFAULT_BAND_PROFILES.get(profile_name, {})
+            
+            if profile_name and 'Emergency' in outdf['Band'].values:
+                emergency_mask = outdf['Band'] == 'Emergency'
+                emergency_rows = outdf[emergency_mask].to_dict('records')
+                priority_order = profile_config.get('priority_order', ['Police', 'Fire', 'EMS', 'Citywide'])
+                
+                # Sort emergency channels by priority
+                sorted_emergency = sort_emergency_channels_by_priority(emergency_rows, priority_order)
+                
+                # Replace emergency rows with sorted ones
+                non_emergency_df = outdf[~emergency_mask]
+                emergency_df = pd.DataFrame(sorted_emergency)
+                outdf = pd.concat([emergency_df, non_emergency_df], ignore_index=True)
+            
+            # Apply channel limits based on profile
+            max_channels = profile_config.get('max_channels')
+            if max_channels and len(outdf) > max_channels:
+                if show_warnings:
+                    messagebox.showinfo(
+                        "Channel Limit Applied",
+                        f"Profile '{profile_name}' limited to {max_channels} channels.\n"
+                        f"Showing top {max_channels} channels by priority."
+                    )
+                outdf = outdf.head(max_channels)
+            
             cols = ["Name","Frequency","Duplex","Offset","Tone","rToneFreq","cToneFreq","DtcsCode","DtcsPolarity","Mode","TStep","Skip","Comment"]
             for c in cols:
                 if c not in outdf.columns:
