@@ -431,7 +431,8 @@ BAND_RANGES = {
     'Emergency': [
         (30.0, 50.0),    # Low VHF (some legacy)
         (138.0, 144.0),  # VHF high-band below 2m ham band
-        (148.0, 174.0),  # VHF high-band above 2m ham band
+        (148.0, 162.399),  # VHF high-band above 2m ham band (excluding NOAA)
+        (162.551, 174.0),  # VHF high-band above NOAA weather band
         (380.0, 420.0),  # UHF public safety below 70cm ham band
         (450.0, 470.0),  # UHF public safety above 70cm ham band
         (700.0, 900.0),  # 700/800 MHz public-safety ranges
@@ -471,9 +472,9 @@ DEFAULT_BAND_PROFILES = {
 }
 
 EMERGENCY_TYPE_KEYWORDS = {
-    'Police': ['police', 'pd', 'sheriff', 'law', 'tac', 'tactical', 'law enforcement'],
-    'Fire': ['fire', 'fd', 'fireground', 'fire ground', 'fire dispatch', 'fire-tac', 'engine'],
-    'EMS': ['ems', 'ems-tac', 'ems:', 'ambulance', 'medical', 'emt'],
+    'Fire': ['fireground', 'fire ground', 'fire-tac', 'fire dispatch', 'engine', 'fire', 'fd'],
+    'EMS': ['ems-tac', 'ems:', 'ambulance', 'medical', 'emt', 'ems'],
+    'Police': ['sheriff', 'law enforcement', 'police', 'pd', 'law', 'tac', 'tactical'],
     'Citywide': ['citywide', 'city-wide', 'city wide', 'c/w', 'cw'],
 }
 
@@ -586,6 +587,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': False,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -599,11 +601,31 @@ RADIO_MODELS = {
         'description': 'Compatible with most CHIRP-supported radios'
     },
 
+    'Baofeng_UV82': {
+        'name': 'Baofeng UV-82',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dstar': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'max_channels': 125,
+        'supports_1_25': False,
+        'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 520.0)],
+        'description': 'Rugged dual-band UHF/VHF handheld. Includes UV-82LP and UV-82X variants.'
+    },
+
     'Baofeng_UV5R': {
         'name': 'Baofeng UV-5R',
         'supports_tone': True,
         'supports_p25': False,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -622,6 +644,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': False,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -640,6 +663,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': False,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -658,6 +682,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': False,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -677,6 +702,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': False,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -695,6 +721,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': True,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -715,6 +742,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': True,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -733,6 +761,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': True,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -752,6 +781,7 @@ RADIO_MODELS = {
         'supports_tone': True,
         'supports_p25': True,
         'supports_edacs': False,
+        'supports_dstar': False,
         'supports_dtcs': True,
         'supports_duplex': True,
         'supports_offset': True,
@@ -765,6 +795,86 @@ RADIO_MODELS = {
         'tone_frequencies': True,
         'frequency_ranges': [(136.0, 174.0), (222.0, 225.0), (400.0, 520.0), (700.0, 900.0)],
         'description': 'Icom radios with P25 capability'
+    },
+    'Icom_ID51': {
+        'name': 'Icom ID-51A PLUS2',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dstar': True,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'supports_digital_mode': True,
+        'max_channels': 500,
+        'supports_1_25': False,
+        'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'description': 'D-STAR dual-band handheld with GPS and Bluetooth'
+    },
+    'Icom_ID5100': {
+        'name': 'Icom ID-5100E',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dstar': True,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'supports_digital_mode': True,
+        'max_channels': 1000,
+        'supports_1_25': False,
+        'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'description': 'D-STAR dual-band mobile with touchscreen and GPS'
+    },
+    'Yaesu_FTM400': {
+        'name': 'Yaesu FTM-400DR',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dstar': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'supports_digital_mode': True,
+        'max_channels': 500,
+        'supports_1_25': False,
+        'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'description': 'System Fusion digital mobile radio'
+    },
+    'Yaesu_FTM100': {
+        'name': 'Yaesu FTM-100DR',
+        'supports_tone': True,
+        'supports_p25': False,
+        'supports_edacs': False,
+        'supports_dstar': False,
+        'supports_dtcs': True,
+        'supports_duplex': True,
+        'supports_offset': True,
+        'supports_step': True,
+        'supports_mode': True,
+        'supports_skip': True,
+        'supports_comment': True,
+        'supports_digital_mode': True,
+        'max_channels': 500,
+        'supports_1_25': False,
+        'tone_frequencies': True,
+        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'description': 'System Fusion digital compact mobile radio'
     }
 }
 
@@ -5033,16 +5143,29 @@ def launch_gui_and_run(default_pages, output_path):
                 comment = f"{comment} | {raw_text}".strip(' |')
             if band == 'Emergency':
                 lname = (name or '').lower()
+                combined_text = ' '.join(filter(None, [name or '', comment or '', raw_text or ''])).lower()
                 protocol = None
-                m = re.search(r'\[(P25|EDACS)\]$', name)
-                if m:
-                    protocol = m.group(1)
+                
+                # Check for digital protocols in name, comment, or raw text
+                if re.search(r'\[(P25|EDACS)\]$', name):
+                    protocol = re.search(r'\[(P25|EDACS)\]$', name).group(1)
+                elif 'd-star' in lname or 'dstar' in lname:
+                    protocol = 'D-STAR'
+                elif 'p25' in combined_text:
+                    protocol = 'P25'
+                elif 'c4fm' in combined_text or 'system fusion' in combined_text or 'fusion' in lname:
+                    protocol = 'C4FM'
+                    
                 if protocol:
                     if cust_level not in ('Advanced', 'High Quality'):
                         continue
                     if protocol == 'P25' and not model_obj.get('supports_p25'):
                         continue
                     if protocol == 'EDACS' and not model_obj.get('supports_edacs'):
+                        continue
+                    if protocol == 'D-STAR' and not model_obj.get('supports_dstar'):
+                        continue
+                    if protocol == 'C4FM' and not model_obj.get('supports_digital_mode'):
                         continue
                 else:
                     other_digital = ('dmr', 'nxdn', 'tdma', 'trunk', 'trunking', 'digital')

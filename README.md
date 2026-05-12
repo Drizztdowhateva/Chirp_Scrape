@@ -1,7 +1,7 @@
 
 # FreqFinder RadioReference Scraper v2.0 🚀
 
-![FreqFinder screenshot](media/2026April13_FreqFinder.png)
+![FreqFinder screenshot](media/FreqFinder_20260504.png)
 
 Welcome to FreqFinder v2.0 — the latest release focused on cleaner export workflow, smarter band profiles, and better donation and documentation support.
 
@@ -13,7 +13,7 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 ./.venv/bin/python make_radioref_list.py --start-id 1 --max-id 3000 --append
 ```
 
-**📚 Documentation**: See [docs/README_ENHANCEMENTS.md](docs/README_ENHANCEMENTS.md) for complete feature documentation, and [docs/CHANGELOG.md](docs/CHANGELOG.md) for version history and updates.
+**📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation and [docs/RADIO_DIGITAL_CAPABILITIES.md](docs/RADIO_DIGITAL_CAPABILITIES.md) for radio model details.
 
 ## Technical Business Profile 🏢
 
