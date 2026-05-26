@@ -2,7 +2,7 @@
 
 Welcome to FreqFinder - the ultimate tool for finding and programming radio frequencies for your specific location and radio model.
 
-![FreqFinder Screenshot](../media/FreqFinder_screenshot.png)
+![FreqFinder Screenshot](../media/FreqFinder_20260504.png)
 
 ## Quick Start
 
@@ -117,6 +117,14 @@ Choose from the dropdown:
 - **Icom ID-51A PLUS2** - D-STAR handheld with GPS
 - **Yaesu FTM-400DR** - System Fusion mobile
 - **Motorola APX** - Professional P25 radio
+
+#### FRS/GMRS Unlock (UV‑5 Family)
+
+Note: For the Baofeng UV‑5 family, FRS/GMRS channels are treated specially. The application will keep the FRS/GMRS band disabled by default for UV‑5 models unless you explicitly enable **Treat FRS/GMRS as unlocked** in Preferences. Enable this only if your device has been firmware‑unlocked and you have completed the necessary unlock routine. Other models (and the `Generic` model) are not restricted by this preference.
+
+#### Locality / Local Calling Frequencies Removed
+
+The previous "Locality" and "Local Calling Frequencies" features have been removed because they were confusing and did not reliably filter results. Local calling frequencies are no longer automatically inserted.
 
 ### 4. Choose Frequency Bands
 - **2m (144-148 MHz)** - VHF ham band
