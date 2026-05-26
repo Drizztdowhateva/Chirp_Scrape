@@ -20,52 +20,13 @@ import subprocess
 import os
 import sys
 
-def _ensure_project_venv_and_requirements():
-    here = os.path.dirname(os.path.abspath(__file__))
-    venv_dir = os.path.join(here, '.venv')
-    if os.name == 'nt':
-        venv_py = os.path.join(venv_dir, 'Scripts', 'python.exe')
-    else:
-        venv_py = os.path.join(venv_dir, 'bin', 'python')
-    reqs = os.path.join(here, 'requirements.txt')
-
-    if not os.path.exists(venv_py):
-        try:
-            print('Creating virtual environment...')
-            subprocess.check_call([sys.executable, '-m', 'venv', venv_dir])
-        except Exception:
-            pass
-
-    need_reexec = False
-    try:
-        import pandas, bs4, requests
-    except Exception:
-        try:
-            print('Installing required Python packages...')
-            subprocess.check_call([venv_py, '-m', 'pip', 'install', '--upgrade', 'pip'])
-            if os.path.exists(reqs):
-                subprocess.check_call([venv_py, '-m', 'pip', 'install', '-r', reqs])
-            else:
-                subprocess.check_call([venv_py, '-m', 'pip', 'install', 'pandas', 'requests', 'beautifulsoup4'])
-            need_reexec = True
-        except Exception:
-            need_reexec = False
-
-    try:
-        if need_reexec or os.path.realpath(sys.executable) != os.path.realpath(venv_py):
-            os.execv(venv_py, [venv_py] + sys.argv)
-    except Exception:
-        pass
-
-# Bootstrapping step is optional and disabled by default to avoid
-# attempting system package installation in managed environments.
-# Call `_ensure_project_venv_and_requirements()` manually if needed.
-
 import re
-import sys
-import os
 import time
 import argparse
+import logging
+import hashlib
+import json
+from datetime import datetime, timedelta
 
 # Application version is read from setup.py if available.
 
@@ -441,14 +402,14 @@ BAND_RANGES = {
 
 PAGE_BAND_GROUPS = [
     ('Zip Code', []),
-    ('Ham-SSB/AM', ['10m', '6m', '2m', '1.25m', '70cm', '33cm', '23cm']),
+    ('Ham-SSB/AM', ['23cm', '33cm', '70cm', '1.25m', '2m', '6m', '10m']),
     ('MURS', ['MURS']),
     ('GMRS/FRS', ['FRS/GMRS']),
     ('Emergency', ['Emergency']),
 ]
 
 # Group HAM bands together for better organization
-HAM_BANDS = ['10m', '6m', '2m', '1.25m', '70cm', '33cm', '23cm']
+HAM_BANDS = ['23cm', '33cm', '70cm', '1.25m', '2m', '6m', '10m']
 
 DEFAULT_BAND_PROFILES = {
     'Emergency Comms': {
@@ -459,7 +420,7 @@ DEFAULT_BAND_PROFILES = {
         'priority_order': ['Police', 'Fire', 'EMS', 'Citywide'],
         'auto_skip_noaa': True,
         'max_channels': 100,
-        'description': 'Optimized for emergency scanning with priority channels first'
+        'description': 'Emergency-only scan: emergency channels first, NOAA skipped'
     },
     'Traveler': {
         'bands': ['70cm', '1.25m', '2m', 'Emergency', 'NOAA'],
@@ -470,7 +431,7 @@ DEFAULT_BAND_PROFILES = {
         'auto_skip_noaa': True,
         'max_channels': 150,
         'mobile_optimized': True,
-        'description': 'Mobile-friendly profile for travelers with route-based frequencies'
+        'description': 'Ham + emergency scan: includes ham and emergency channels, NOAA skipped'
     },
     'HamScan': {
         'bands': ['70cm', '1.25m', '2m'],
@@ -479,7 +440,7 @@ DEFAULT_BAND_PROFILES = {
         'scanner_mode': True,
         'auto_skip_noaa': False,
         'max_channels': 200,
-        'description': 'Ham radio scanning with local calling frequencies prioritized'
+        'description': 'All ham/repeaters scan: local ham and repeater channels only'
     },
 }
 
@@ -527,6 +488,7 @@ def sort_emergency_channels_by_priority(rows, priority_order=None):
     
     return sorted(rows, key=sort_key)
 
+
 def get_location_based_recommendations(zip_code, profile_name=None):
     """Get location-aware frequency recommendations based on ZIP code."""
     recommendations = {
@@ -559,7 +521,7 @@ def get_location_based_recommendations(zip_code, profile_name=None):
             'special_considerations': ['Mobile coverage', 'Hand-off between jurisdictions']
         }
     }
-    
+
     # Profile-specific recommendations
     profile_recommendations = {
         'Emergency Comms': {
@@ -583,11 +545,11 @@ def get_location_based_recommendations(zip_code, profile_name=None):
             'calling_freqs_priority': True
         }
     }
-    
+
     # ZIP code based area type detection (simplified)
     # This would normally use a ZIP code database API
     area_type = detect_area_type(zip_code)
-    
+
     result = {
         'zip_code': zip_code,
         'area_type': area_type,
@@ -595,14 +557,15 @@ def get_location_based_recommendations(zip_code, profile_name=None):
         'profile_specific': profile_recommendations.get(profile_name, {}),
         'suggested_config': generate_suggested_config(area_type, profile_name)
     }
-    
+
     return result
+
 
 def detect_area_type(zip_code):
     """Simplified area type detection based on ZIP code patterns."""
     # This is a simplified implementation
     # In production, this would use a ZIP code database API
-    
+
     # ZIP code patterns (simplified heuristics)
     if zip_code.startswith(('0', '1')):  # Northeast
         return 'urban_areas'
@@ -616,6 +579,7 @@ def detect_area_type(zip_code):
         return 'rural_areas'
     else:
         return 'suburban_areas'  # Default
+
 
 def generate_suggested_config(area_type, profile_name):
     """Generate suggested configuration based on area type and profile."""
@@ -647,7 +611,7 @@ def generate_suggested_config(area_type, profile_name):
             'mobile_optimized': True
         }
     }
-    
+
     profile_overrides = {
         'Emergency Comms': {
             'focus_emergency': True,
@@ -662,15 +626,15 @@ def generate_suggested_config(area_type, profile_name):
             'calling_freqs_first': True
         }
     }
-    
+
     config = area_configs.get(area_type, area_configs['suburban_areas'])
     overrides = profile_overrides.get(profile_name, {})
-    
+
     # Merge configurations
     result = {**config, **overrides}
     result['area_type'] = area_type
     result['profile_name'] = profile_name
-    
+
     return result
 
 
@@ -712,7 +676,8 @@ def select_zip_rows_with_fair_limit(zip_rows, remaining_slots, zip_order=None, p
 
     if zip_order:
         order_index = {zip_code: idx for idx, zip_code in enumerate(zip_order)}
-        sorted_zips = sorted(zip_rows.keys(), key=lambda z: (zip_counts[z], order_index.get(z, 999)))
+        # Sort by ZIP code entry order first, then by count to preserve user's entry order
+        sorted_zips = sorted(zip_rows.keys(), key=lambda z: (order_index.get(z, 999), zip_counts[z]))
     else:
         sorted_zips = sorted(zip_rows.keys(), key=lambda z: (zip_counts[z], z))
 
@@ -777,10 +742,19 @@ RADIO_MODELS = {
         'supports_step': True,
         'supports_mode': True,
         'supports_skip': True,
-    'supports_1_25': False,
+        'supports_1_25': True,
         'max_channels': 1000,
         'tone_frequencies': True,
-        'frequency_ranges': [(136.0, 174.0), (222.0, 225.0), (400.0, 520.0), (700.0, 900.0)],
+        'frequency_ranges': [
+            (28.0, 29.7),
+            (50.0, 54.0),
+            (136.0, 174.0),
+            (222.0, 225.0),
+            (400.0, 520.0),
+            (700.0, 900.0),
+            (902.0, 928.0),
+            (1240.0, 1300.0)
+        ],
         'description': 'Compatible with most CHIRP-supported radios'
     },
 
@@ -936,7 +910,7 @@ RADIO_MODELS = {
         'max_channels': 1000,
         'supports_1_25': True,
         'tone_frequencies': True,
-        'frequency_ranges': [(136.0, 174.0), (222.0, 225.0), (400.0, 520.0)],
+        'frequency_ranges': [(28.0, 30.0), (50.0, 54.0), (136.0, 174.0), (222.0, 225.0), (400.0, 520.0)],
         'description': 'Kenwood mobile/portable radios'
     },
     'Motorola_APX': {
@@ -996,7 +970,7 @@ RADIO_MODELS = {
         'max_channels': 500,
         'supports_1_25': False,
         'tone_frequencies': True,
-        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'frequency_ranges': [(50.0, 54.0), (136.0, 174.0), (400.0, 500.0)],
         'description': 'D-STAR dual-band handheld with GPS and Bluetooth'
     },
     'Icom_ID5100': {
@@ -1016,7 +990,7 @@ RADIO_MODELS = {
         'max_channels': 1000,
         'supports_1_25': False,
         'tone_frequencies': True,
-        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'frequency_ranges': [(50.0, 54.0), (136.0, 174.0), (400.0, 500.0)],
         'description': 'D-STAR dual-band mobile with touchscreen and GPS'
     },
     'Yaesu_FTM400': {
@@ -1036,7 +1010,7 @@ RADIO_MODELS = {
         'max_channels': 500,
         'supports_1_25': False,
         'tone_frequencies': True,
-        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'frequency_ranges': [(50.0, 54.0), (136.0, 174.0), (400.0, 500.0)],
         'description': 'System Fusion digital mobile radio'
     },
     'Yaesu_FTM100': {
@@ -1056,7 +1030,7 @@ RADIO_MODELS = {
         'max_channels': 500,
         'supports_1_25': False,
         'tone_frequencies': True,
-        'frequency_ranges': [(136.0, 174.0), (400.0, 470.0)],
+        'frequency_ranges': [(50.0, 54.0), (136.0, 174.0), (400.0, 500.0)],
         'description': 'System Fusion digital compact mobile radio'
     }
 }
@@ -1280,15 +1254,6 @@ def fetch_freqs_for_page(url):
     return result
 
 
-def get_rr_counterpart_page(url, target_page):
-    """Return a `ham` or `emergency` variant page URL for a RadioReference CTID or ZIP page."""
-    if not url:
-        return url
-    if re.search(r'/(ham|emergency)/?$', url, flags=re.I):
-        return re.sub(r'/(ham|emergency)/?$', f'/{target_page}', url, flags=re.I)
-    return url
-
-
 BAND_TOKEN_ALIASES = {
     '2M': '2m',
     '70CM': '70cm',
@@ -1349,10 +1314,6 @@ def expand_band_tokens(tokens):
         if band and band not in bands:
             bands.append(band)
     return bands
-
-
-def build_radioreference_pages(tokens, rr_index=None):
-    return {label: url for label, url, _ in build_radioreference_page_entries(tokens, rr_index)}
 
 
 def build_radioreference_page_entries(tokens, rr_index=None):
@@ -1597,6 +1558,28 @@ def load_rr_index(force_refresh=False):
     return index
 
 
+def get_radioref_db_status(max_age_days=30):
+    """Return the last-modified date string for local radioref.csv."""
+    csv_path = os.path.join(os.path.dirname(__file__), 'radioref.csv')
+    if not os.path.exists(csv_path):
+        return 'Missing'
+    try:
+        mtime = os.path.getmtime(csv_path)
+        return datetime.fromtimestamp(mtime).strftime('Updated %Y-%m-%d')
+    except Exception:
+        return 'Unknown'
+
+
+def get_radioref_db_age_days():
+    csv_path = os.path.join(os.path.dirname(__file__), 'radioref.csv')
+    if not os.path.exists(csv_path):
+        return None
+    try:
+        return (time.time() - os.path.getmtime(csv_path)) / 86400.0
+    except Exception:
+        return None
+
+
 def get_county_from_zip(zip_code):
     """Given a ZIP code, fetch the RR zip page and try to find the county page link (ctid).
 
@@ -1743,24 +1726,11 @@ class QRZHelper:
             'message': 'QRZ helper stub active; implement QRZ XML API access separately with credentials.',
         }
 
-    def lookup_zip(self, zipcode):
-        """Return a stub response for a ZIP code lookup."""
-        return {
-            'status': 'stub',
-            'zipcode': zipcode,
-            'message': 'QRZ helper stub active; QRZ does not provide a public ZIP-to-frequency feed without a subscription.',
-        }
 
 
 # New frequency source implementations with safety mechanisms
 
 # Enhanced logging for debugging
-import logging
-import hashlib
-import json
-import os
-from datetime import datetime, timedelta
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -1968,7 +1938,6 @@ def scrape_repeaterbook(zipcode=None, state=None, callsign=None):
                         json_match = re.search(r'(\{.*\})', script.string)
                         if json_match:
                             try:
-                                import json
                                 data = json.loads(json_match.group(1))
                                 # Parse JSON repeater data
                                 if isinstance(data, dict) and 'repeaters' in data:
@@ -1980,9 +1949,9 @@ def scrape_repeaterbook(zipcode=None, state=None, callsign=None):
                                                 tone = repeater.get('tone', '')
                                                 duplex = repeater.get('duplex')
                                                 results.append((name, float(freq), tone, duplex, None, str(repeater)))
-                            except:
+                            except Exception:
                                 pass
-            except:
+            except Exception:
                 pass
                     
         # Additional delay between requests
@@ -2399,6 +2368,7 @@ def validate_and_deduplicate_frequencies(results):
     return validated_results
 
 
+
 def get_defaults_for_freq(freq):
     """Return pre-loaded defaults for common public-frequency bands if available."""
     try:
@@ -2645,19 +2615,6 @@ def launch_gui_and_run(default_pages, output_path):
         pages = exported_data.get('pages') or {}
         return _get_default_export_filename_with_pages(pages)
 
-    def _get_preview_default_filename():
-        pages = exported_data.get('pages') or {}
-        name = _get_default_export_filename_with_pages(pages)
-        return name.replace('.csv', '_Preview.csv')
-
-    def _get_batch_export_filename(profile_name):
-        source_name = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
-        model_raw = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
-        bands = get_selected_band_order() if callable(get_selected_band_order) else []
-        safe_profile = _normalize_export_filename(profile_name or 'profile')
-        base_name = _compute_export_filename(source_name, model_raw, bands)
-        return base_name.replace('.csv', f'_{safe_profile}.csv')
-
     def _dedupe_export_rows(rows):
         grouped = {}
         for r in rows:
@@ -2676,6 +2633,41 @@ def launch_gui_and_run(default_pages, output_path):
             if not existing or _row_score(r) > _row_score(existing):
                 grouped[key] = r
         return list(grouped.values())
+
+    def check_internet_connectivity(timeout=5):
+        """Return True when a lightweight internet check succeeds."""
+        test_url = 'https://raw.githubusercontent.com'
+        try:
+            resp = http_get(test_url, timeout=timeout)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def create_update_zip_db():
+        if not check_internet_connectivity():
+            messagebox.showwarning(
+                'Create/Update ZIP DB',
+                'Internet access is unavailable. Please check your connection and try again.'
+            )
+            return
+        csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'radioref.csv'))
+        refreshed = refresh_rr_index()
+        if refreshed:
+            messagebox.showinfo(
+                'Create/Update ZIP DB',
+                f'readioref.csv was updated from the repository and saved to:\n{csv_path}'
+            )
+        else:
+            if os.path.exists(csv_path):
+                messagebox.showwarning(
+                    'Create/Update ZIP DB',
+                    'Could not refresh radioref.csv from the repository. Using local radioref.csv instead.'
+                )
+            else:
+                messagebox.showwarning(
+                    'Create/Update ZIP DB',
+                    'Could not refresh radioref.csv from the repository, and no local index is available.'
+                )
 
     def _format_export_statistics(df):
         band_counts = df['Band'].value_counts().to_dict() if 'Band' in df.columns else {}
@@ -2875,60 +2867,10 @@ def launch_gui_and_run(default_pages, output_path):
         save_last_user_state(profile_var.get(), [iv.get().strip() for iv in input_vars])
         update_band_preview_and_summary()
 
-    def batch_export():
-        profile_names = sorted(band_profiles.keys())
-        if not profile_names:
-            messagebox.showwarning('Batch Export', 'No saved profiles to export.')
-            return
-        batch_win = tk.Toplevel(root)
-        batch_win.title('Batch Export Profiles')
-        batch_win.geometry('520x420')
-        batch_win.transient(root)
-        batch_win.grab_set()
-
-        tk.Label(batch_win, text='Select saved profiles to export:', font=('Arial', 11, 'bold')).pack(anchor='w', padx=12, pady=(12, 4))
-        listbox = tk.Listbox(batch_win, selectmode='multiple', height=10)
-        listbox.pack(fill='both', expand=True, padx=12, pady=(0, 12))
-        for name in profile_names:
-            listbox.insert('end', name)
-
-        def run_batch():
-            selected = [profile_names[i] for i in listbox.curselection()]
-            if not selected:
-                messagebox.showwarning('Batch Export', 'Choose at least one profile.')
-                return
-            outdir = filedialog.askdirectory(initialdir=DEFAULT_SAVE_DIR, title='Select export folder')
-            if not outdir:
-                return
-            errors = []
-            count = 0
-            for name in selected:
-                apply_profile(name)
-                df, pages = build_export_dataframe(show_warnings=False)
-                if df is None or len(df) == 0:
-                    errors.append(name)
-                    continue
-                safe_name = re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_') or 'profile'
-                from datetime import datetime
-                save_path = os.path.join(outdir, f'FreqFinder_{safe_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
-                try:
-                    import csv as _csv
-                    out_cols = list(df.columns)
-                    write_export_csv(save_path, df)
-                    count += 1
-                except Exception:
-                    errors.append(name)
-            if errors:
-                messagebox.showwarning('Batch Export', f'Export complete with errors. Failed: {", ".join(errors)}')
-            else:
-                messagebox.showinfo('Batch Export', f'Exported {count} profiles to {outdir}')
-            batch_win.destroy()
-
-        tk.Button(batch_win, text='Run Batch Export', command=run_batch, bg='#1976D2', fg='white', font=('Arial', 10), width=16).pack(pady=(0, 12))
-
     filemenu.add_command(label='Open File...', command=lambda: on_open_file())
     filemenu.add_command(label='Quick Export', command=lambda: on_quick_export())
     filemenu.add_command(label='Save As...', command=on_save_as)
+    filemenu.add_command(label='Create/Update ZIP DB...', command=create_update_zip_db)
     recent_zip_menu = tk.Menu(filemenu, tearoff=0)
     recent_sets = persistent_settings.get('recent_zip_sets', [])
     if recent_sets:
@@ -3515,87 +3457,6 @@ def launch_gui_and_run(default_pages, output_path):
     refrencesmenu.add_command(label='CHIRP Program Website', command=open_chirp_site)
     helpmenu.add_cascade(label='Refrences', menu=refrencesmenu)
     
-    # SOAP Debug submenu
-    def open_soap_debug():
-        dlg = tk.Toplevel(root)
-        dlg.title('SOAP Debug')
-        dlg.resizable(True, True)
-        center_and_clamp(dlg, 800, 500)
-        frm = tk.Frame(dlg)
-        frm.pack(fill='both', expand=True)
-        left = tk.Frame(frm)
-        left.pack(side='left', fill='y')
-        right = tk.Frame(frm)
-        right.pack(side='right', fill='both', expand=True)
-
-        ops_list = tk.Listbox(left, width=40)
-        ops_list.pack(fill='y', expand=True)
-        details = tk.Text(right)
-        details.pack(fill='both', expand=True)
-
-        from rr_api import inspect_wsdl, call_soap_method
-        try:
-            ops = inspect_wsdl()
-        except Exception as e:
-            details.insert('end', f'Failed to inspect WSDL: {e}')
-            return
-
-        for k in sorted(ops.keys()):
-            ops_list.insert('end', k)
-
-        def on_select(evt=None):
-            sel = ops_list.curselection()
-            if not sel:
-                return
-            name = ops_list.get(sel[0])
-            info = ops.get(name, {})
-            details.delete('1.0', 'end')
-            details.insert('end', f"Operation: {name}\n")
-            details.insert('end', f"Input: {info.get('input')}\n")
-            details.insert('end', f"Output: {info.get('output')}\n")
-            details.insert('end', f"Doc: {info.get('doc')}\n")
-            details.insert('end', '\nParameters JSON (optional) then press Call:\n')
-            details.insert('end', '{\n  \n}')
-
-        ops_list.bind('<<ListboxSelect>>', on_select)
-
-        def call_op():
-            sel = ops_list.curselection()
-            if not sel:
-                return
-            name = ops_list.get(sel[0])
-            txt = details.get('1.0', 'end')
-            # assume JSON params at end after marker
-            try:
-                jstart = txt.rfind('{')
-                if jstart != -1:
-                    params = json.loads(txt[jstart:])
-                else:
-                    params = {}
-            except Exception as e:
-                details.insert('end', f'\nFailed to parse JSON params: {e}')
-                return
-            try:
-                key = os.environ.get('RR_API_PASS') or os.environ.get('RR_API_KEY') or RR_API_KEY
-                if not key:
-                    details.insert('end', '\nNo API key available; load/encrypt one first')
-                    return
-                resp = call_soap_method(key, name, **params)
-                try:
-                    import json as _json
-                    details.insert('end', '\nResponse:\n')
-                    details.insert('end', _json.dumps(resp, default=lambda o: getattr(o, '__dict__', str(o)), indent=2))
-                except Exception:
-                    details.insert('end', f'\n{resp}')
-            except Exception as e:
-                details.insert('end', f'\nCall failed: {e}')
-
-        btn_frame = tk.Frame(dlg)
-        btn_frame.pack(fill='x')
-        tk.Button(btn_frame, text='Call', command=call_op).pack(side='left', padx=8, pady=6)
-
-    # SOAP Debug removed from Help menu per request
-
     # --- API key selection dropdown ---
     try:
         import rr_api
@@ -3667,7 +3528,14 @@ def launch_gui_and_run(default_pages, output_path):
 
     def refresh_rr_index_ui():
         csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'radioref.csv'))
+        if not check_internet_connectivity():
+            messagebox.showwarning(
+                'RadioReference Index',
+                'Internet access is unavailable. Please check your connection and try again.'
+            )
+            return
         refreshed = refresh_rr_index()
+        update_zip_db_status()
         if refreshed:
             messagebox.showinfo('RadioReference Index', f'radioref.csv was updated from online repository and saved to {csv_path}')
         else:
@@ -3763,11 +3631,15 @@ def launch_gui_and_run(default_pages, output_path):
         ToolTip(model_combo, 'Choose the radio model to match supported features and limit exports to compatible settings')
 
         tk.Label(radio_scrollable_frame, text='Data Source:', font=('Arial', 10, 'bold')).pack(anchor='w', padx=10, pady=(10, 5))
-        source_var = tk.StringVar(value=preferences_data['selected_source'].get())
+        allowed_sources = ['RadioReference', 'RepeaterBook', 'QRZ Database', 'InterceptRadio']
+        selected_source = preferences_data['selected_source'].get()
+        if selected_source not in allowed_sources:
+            selected_source = 'RadioReference'
+        source_var = tk.StringVar(value=selected_source)
         source_combo = ttk.Combobox(radio_scrollable_frame, textvariable=source_var, state='readonly', width=40)
-        source_combo['values'] = ['RadioReference', 'Radio Browser', 'RepeaterBook', 'QRZ Database', 'InterceptRadio']
+        source_combo['values'] = allowed_sources
         source_combo.pack(fill='x', padx=10, pady=(5, 10))
-        source_desc_var = tk.StringVar(value='Choose data source: RadioReference (repeater/emergency), Radio Browser (FM broadcast), RepeaterBook (ham repeaters), QRZ Database (operator lookup), or InterceptRadio (ZIP-based ham frequencies).')
+        source_desc_var = tk.StringVar(value='Choose data source: RadioReference (repeater/emergency), RepeaterBook (ham repeaters), QRZ Database (operator lookup), or InterceptRadio (ZIP-based ham frequencies).')
         source_desc_label = tk.Label(radio_scrollable_frame, textvariable=source_desc_var, wraplength=700, justify='left', foreground='#666666', font=('Arial', 9))
         source_desc_label.pack(anchor='w', padx=10, pady=(0, 15))
 
@@ -3803,6 +3675,13 @@ def launch_gui_and_run(default_pages, output_path):
             if selected_key:
                 model_desc_var.set(RADIO_MODELS[selected_key]['description'])
                 preferences_data['model_features'] = RADIO_MODELS[selected_key]
+                preferences_data['selected_model'].set(selected_name)  # Update main preferences tracking
+                
+                # Update band checkbox availability based on radio model
+                try:
+                    update_band_checkbox_availability()
+                except Exception:
+                    pass
                 
                 # Update features display
                 features_text.config(state='normal')
@@ -3830,8 +3709,22 @@ def launch_gui_and_run(default_pages, output_path):
                 if model_info.get('supports_step'):
                     features.append('✓ Step Sizes')
                 features.append(f'\n📊 Max Channels: {model_info.get("max_channels", "N/A")}')
+                features_append_frequencies = RADIO_MODELS[selected_key].get('frequency_ranges', [])
+                if features_append_frequencies:
+                    freq_text = 'Supported Bands: '
+                    freq_parts = []
+                    for low, high in features_append_frequencies:
+                        freq_parts.append(f'{low:.1f}–{high:.1f} MHz')
+                    freq_text += ', '.join(freq_parts)
+                    features.append(f'\n📡 {freq_text}')
                 features_text.insert('end', '\n'.join(features))
                 features_text.config(state='disabled')
+                
+                # Update band checkbox availability in main GUI
+                try:
+                    update_band_checkbox_availability()
+                except Exception:
+                    pass  # Silently fail if function not yet defined
         
         model_combo.bind('<<ComboboxSelected>>', update_model_display)
         update_model_display()  # Initial display
@@ -3840,8 +3733,7 @@ def launch_gui_and_run(default_pages, output_path):
         def update_source_description(*args):
             selected_source = source_var.get()
             source_descriptions = {
-                'RadioReference': 'RadioReference for repeater/emergency exports or Radio Browser for FM broadcast programming.',
-                'Radio Browser': 'Radio Browser for FM broadcast programming.',
+                'RadioReference': 'RadioReference for repeater and emergency exports.',
                 'RepeaterBook': 'RepeaterBook for ham repeater databases.',
                 'QRZ Database': 'QRZ Database for ham operator lookup.',
                 'InterceptRadio': 'InterceptRadio for ZIP-based ham frequencies.'
@@ -4143,14 +4035,14 @@ def launch_gui_and_run(default_pages, output_path):
         right.pack(side='right', fill='y', padx=(12, 0))
 
         tk.Label(left, text='Welcome to FreqFinder', font=('Arial', 13, 'bold')).pack(anchor='w')
-        tk.Label(left, text='Build high-quality radio channel exports quickly with support for repeaters, NOAA/MURS, FRS-GMRS, and Radio Browser FM data.',
+        tk.Label(left, text='Build high-quality radio channel exports quickly with support for repeaters, NOAA/MURS, FRS-GMRS, and ZIP/ham band filtering.',
                  wraplength=340, justify='left', fg='#334155', font=('Arial', 10)).pack(anchor='w', pady=(8, 12))
 
         intro_items = [
             'RadioReference for repeaters and emergency channels',
-            'Radio Browser for FM broadcast station programming',
+            'RepeaterBook for ham repeater listings',
+            'QRZ Database for operator lookup',
             'One ZIP mode can target ~80% radio capacity with top channels',
-            'Use the tabbed pages to choose AM, NOAA/MURS, FRS-GMRS and Emergency',
         ]
         for item in intro_items:
             tk.Label(left, text=f'• {item}', wraplength=340, justify='left', fg='#334155', font=('Arial', 9)).pack(anchor='w', pady=2)
@@ -4228,6 +4120,8 @@ def launch_gui_and_run(default_pages, output_path):
     input_start_row = 1
 
     band_tabs = ttk.Notebook(root)
+    style = ttk.Style()
+    style.configure('TNotebook.Tab', padding=[12, 6])
     page_frames = {}
     for title, bands in PAGE_BAND_GROUPS:
         frame = ttk.Frame(band_tabs)
@@ -4322,23 +4216,29 @@ def launch_gui_and_run(default_pages, output_path):
     for i, iv in enumerate(input_vars, start=1):
         if i <= len(last_zips):
             iv.set(last_zips[i-1])
+        row_frame = tk.Frame(zip_frame)
+        row_frame.grid(row=input_start_row + i-1, column=0, sticky='w', padx=(4, 0), pady=2)
 
-        label = tk.Label(zip_frame, text=f'Zip Code {i}:')
-        label.grid(row=input_start_row + i-1, column=0, sticky='e', padx=(4, 50), pady=2)
+        label = tk.Label(row_frame, text=f'Zip Code {i}:')
+        label.pack(side='left', padx=(0, 0))
         ToolTip(label, 'Enter a 5-digit ZIP code or RadioReference URL\nto search for frequencies in that area')
-        
-        ent = tk.Entry(zip_frame, textvariable=iv, width=14)
-        ent.grid(row=input_start_row + i-1, column=1, sticky='w', padx=0, pady=2)
+
+        ent = tk.Entry(row_frame, textvariable=iv, width=12)
+        ent.pack(side='left', padx=(2, 0))
         ToolTip(ent, 'ZIP Code: Searches for repeaters in that area\nURL: Directly uses RadioReference page\nBand tokens like 2m, 70cm, 1.25m, NOAA, Emergency are recognized and applied as selected bands.')
-        
-        resolved_lbl = tk.Label(zip_frame, textvariable=resolved_labels[i-1], anchor='w', fg='#666666', wraplength=320, justify='left')
-        resolved_lbl.grid(row=input_start_row + i-1, column=2, columnspan=2, sticky='w', padx=4, pady=2)
+
+        resolved_lbl = tk.Label(row_frame, textvariable=resolved_labels[i-1], anchor='w', fg='#666666', wraplength=220, justify='left', font=('Arial', 8))
+        resolved_lbl.pack(side='left', padx=(4, 0))
         resolved_label_widgets.append(resolved_lbl)
         ToolTip(resolved_lbl, 'Shows the county/state location found\nand its RadioReference ID (ctid)')
         
         iv.trace_add('write', lambda *_i, idx=i-1: resolve_input(idx))
         if iv.get().strip():
             resolve_input(i-1)
+
+    # Keep first column tight; column 1 can absorb extra space if needed
+    zip_frame.grid_columnconfigure(0, weight=0)
+    zip_frame.grid_columnconfigure(1, weight=1)
 
     # Bands profile system and tabbed band plan selection
     start_row = input_start_row + len(input_vars)
@@ -4499,6 +4399,7 @@ def launch_gui_and_run(default_pages, output_path):
     profile_var = tk.StringVar(value=persistent_settings.get('last_band_profile', ''))
     profile_combo = ttk.Combobox(profile_frame, textvariable=profile_var, state='readonly', width=28)
     profile_combo.grid(row=0, column=1, sticky='we', padx=(4, 0))
+    ToolTip(profile_combo, 'Choose a saved name profile, then press Load. Quick profiles below apply bundled Emergency, Traveler, or HamScan presets.')
 
     profile_actions_frame = tk.Frame(profile_frame)
     profile_actions_frame.grid(row=0, column=2, rowspan=4, sticky='nw', padx=(12, 0))
@@ -4517,9 +4418,17 @@ def launch_gui_and_run(default_pages, output_path):
     profile_compare_var = tk.StringVar(value='')
     profile_compare_combo = ttk.Combobox(profile_frame, textvariable=profile_compare_var, state='readonly', width=26)
     profile_compare_combo.grid(row=2, column=1, sticky='we', padx=(4, 0), pady=(6, 0))
-    tk.Button(profile_actions_frame, text='Emergency', command=lambda: apply_profile('Emergency Comms'), width=11).grid(row=2, column=0, padx=3, pady=2)
-    tk.Button(profile_actions_frame, text='Traveler', command=lambda: apply_profile('Traveler'), width=10).grid(row=2, column=1, padx=3, pady=2)
-    tk.Button(profile_actions_frame, text='HamScan', command=lambda: apply_profile('HamScan'), width=10).grid(row=2, column=2, padx=3, pady=2)
+    emergency_btn = tk.Button(profile_actions_frame, text='Emergency', command=lambda: apply_profile('Emergency Comms'), width=11)
+    emergency_btn.grid(row=2, column=0, padx=3, pady=2)
+    ToolTip(emergency_btn, 'Emergency profile: SCAN Emergency channels only. SKIPS NOAA and ham frequencies.')
+    traveler_btn = tk.Button(profile_actions_frame, text='Scan All', command=lambda: apply_profile('Traveler'), width=10)
+    traveler_btn.grid(row=2, column=1, padx=3, pady=2)
+    ToolTip(traveler_btn, 'Scan All profile: SCAN Emergency + Simplex/Ham Frequencies. SKIPS NOAA. Includes ham repeaters and emergency channels.')
+    hamscan_btn = tk.Button(profile_actions_frame, text='HamScan', command=lambda: apply_profile('HamScan'), width=10)
+    hamscan_btn.grid(row=2, column=2, padx=3, pady=2)
+    ToolTip(hamscan_btn, 'HamScan profile: SCAN Simplex/Citizen bands only. SKIPS Emergency and NOAA. Includes all local ham repeater bands.')
+
+    tk.Label(profile_frame, text='Quick profiles: Emergency = emergency-only; Scan All = ham + emergency; HamScan = all ham/repeaters', font=('Arial', 8), fg='#333').grid(row=4, column=0, columnspan=2, sticky='w', pady=(6, 0))
 
     band_tabs.grid(row=start_row+1, column=0, columnspan=2, sticky='nsew', padx=8, pady=4)
     root.grid_rowconfigure(start_row+1, weight=1)
@@ -4529,11 +4438,15 @@ def launch_gui_and_run(default_pages, output_path):
     band_vars = {}
     emergency_filter_vars = {}
     band_listbox = tk.Listbox(page_frames['Ham-SSB/AM'], height=8)
-    band_listbox.grid(row=0, column=0, rowspan=10, sticky='n', padx=8, pady=4)
+    band_listbox.grid(row=0, column=0, rowspan=7, sticky='nsew', padx=8, pady=0)
+    checkbox_frame = tk.Frame(page_frames['Ham-SSB/AM'])
+    checkbox_frame.grid(row=0, column=2, rowspan=7, sticky='nw', padx=10, pady=0)
+    for row_idx in range(7):
+        checkbox_frame.grid_rowconfigure(row_idx, minsize=18)
+    checkbox_frame.grid_propagate(False)
     ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
-    ToolTip(band_listbox, 'Drag and drop or use Up/Down buttons to reorder bands\nTop band appears first in export')
+
     
-    tk.Label(page_frames['Ham-SSB/AM'], text='High-quality frequency band selection: best used with one ZIP code for local coverage.', font=('Arial', 9), fg='#555').grid(row=10, column=0, columnspan=3, sticky='w', padx=10, pady=(4, 0))
 
     drag_data = {'item': None, 'index': None}
     def on_band_drag_start(event):
@@ -4560,26 +4473,7 @@ def launch_gui_and_run(default_pages, output_path):
     band_listbox.bind('<B1-Motion>', on_band_drag_motion)
     band_listbox.bind('<ButtonRelease-1>', on_band_drag_release)
 
-    band_search_var = tk.StringVar()
-    scope_search_var = tk.StringVar()
-    scope_only_var = tk.IntVar(value=0)
-    def filter_band_checkbuttons(*args):
-        query = band_search_var.get().strip().lower()
-        for band, cb in band_checkbuttons.items():
-            if not query or query in band.lower():
-                try:
-                    cb.grid()
-                except Exception:
-                    pass
-            else:
-                try:
-                    cb.grid_remove()
-                except Exception:
-                    pass
-    band_search_var.trace_add('write', filter_band_checkbuttons)
-
-    def get_scope_keywords():
-        return [tok.strip().lower() for tok in re.split(r'[\n,]+', scope_search_var.get() or '') if tok.strip()]
+    # Locality filtering removed: scope_search_var and scope_only_var were deprecated
 
     def move_up():
         sel = band_listbox.curselection()
@@ -4609,36 +4503,28 @@ def launch_gui_and_run(default_pages, output_path):
 
     # Add Up/Down buttons to Ham-SSB/AM page (now that functions are defined)
     band_control_frame = tk.Frame(page_frames['Ham-SSB/AM'])
-    band_control_frame.grid(row=0, column=1, sticky='n', padx=4, pady=4)
-    up_btn = tk.Button(band_control_frame, text='Up', command=move_up, width=6, height=2)
+    band_control_frame.grid(row=0, column=1, sticky='nw', padx=4, pady=0)
+    up_btn = tk.Button(band_control_frame, text='Up', command=move_up, width=6, height=1)
     up_btn.grid(row=0, column=0, padx=2, pady=2)
     ToolTip(up_btn, 'Move selected band up in priority')
-    down_btn = tk.Button(band_control_frame, text='Down', command=move_down, width=6, height=2)
+    down_btn = tk.Button(band_control_frame, text='Down', command=move_down, width=6, height=1)
     down_btn.grid(row=1, column=0, padx=2, pady=2)
     ToolTip(down_btn, 'Move selected band down in priority')
 
     search_frame = tk.Frame(zip_frame)
     search_frame.grid(row=input_start_row + len(input_vars), column=0, sticky='w', padx=4, pady=(12, 2))
-    tk.Label(search_frame, text='Filter bands:').grid(row=0, column=0, sticky='w')
-    search_entry = tk.Entry(search_frame, textvariable=band_search_var, width=18)
-    search_entry.grid(row=0, column=1, sticky='w', padx=(4,0))
-    ToolTip(search_entry, 'Filter the available band checkboxes by name')
 
-    tk.Label(search_frame, text='Locality:').grid(row=1, column=0, sticky='w', pady=(4,0))
-    scope_entry = tk.Entry(search_frame, textvariable=scope_search_var, width=18)
-    scope_entry.grid(row=1, column=1, sticky='w', padx=(4,0), pady=(4,0))
-    ToolTip(scope_entry, 'Enter preferred locality keywords to rank nearby channels higher. Examples: Evanston, Skokie, Rogers Park')
-
-    scope_only_cb = tk.Checkbutton(search_frame, text='Local Calling Frequencies', variable=scope_only_var,
-                                   command=lambda: update_band_preview_and_summary())
-    scope_only_cb.grid(row=2, column=0, columnspan=2, sticky='w', pady=(4,0))
-    ToolTip(scope_only_cb, 'When enabled, only rows matching the locality keywords will be returned')
-
-    
-    frs_unlock_var = preferences_data.get('frs_gmrs_unlock') if preferences_data.get('frs_gmrs_unlock') else tk.IntVar(value=0)
-    frs_unlock_cb = tk.Checkbutton(search_frame, text='Ensure FRS/GMRS unlocked & enable bandplan', variable=frs_unlock_var)
-    frs_unlock_cb.grid(row=1, column=0, columnspan=3, sticky='w', pady=(8, 0))
-    ToolTip(frs_unlock_cb, 'Mark FRS/GMRS fixed channels as unlocked for programming (requires firmware unlock on your radio)')
+    # Locality input and 'Local Calling Frequencies' option removed from Zip Code tab
+    # New: allow including national/regional calling frequencies (simplex) via a checkbox
+    include_national_calling_var = tk.IntVar(value=0)
+    include_national_calling_cb = tk.Checkbutton(
+        search_frame,
+        text='Include national calling frequencies (simplex)',
+        variable=include_national_calling_var,
+        command=lambda: update_band_preview_and_summary()
+    )
+    include_national_calling_cb.grid(row=0, column=0, sticky='w', padx=2, pady=(0, 4))
+    ToolTip(include_national_calling_cb, 'Include national/regional simplex calling frequencies for 2m/70cm/1.25m (e.g., 146.520, 446.000, 223.500)')
 
     band_preview_frame = tk.LabelFrame(root, text='Band Plan Preview', padx=4, pady=4)
     band_preview_frame.grid(row=start_row+1, column=2, columnspan=2, rowspan=1, sticky='nsew', padx=4, pady=2)
@@ -4667,6 +4553,11 @@ def launch_gui_and_run(default_pages, output_path):
             lines.append(f'MURS channels: {len(MURS_FREQS)}')
         if 'FRS/GMRS' in bands:
             lines.append(f'FRS/GMRS channels: {len(FRS_GMRS_FREQS)}')
+        try:
+            if include_national_calling_var.get():
+                lines.append('Include national calling frequencies: On')
+        except Exception:
+            pass
         if 'Emergency' in bands:
             lines.append('Emergency: variable repeater dispatch channels')
             emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
@@ -4682,7 +4573,14 @@ def launch_gui_and_run(default_pages, output_path):
             lines.append('Repeater bands: area-specific channels from RadioReference')
             lines.append('Note: Same callsign with different frequencies = separate repeaters or modes')
         lines.append('')
-        lines.append(f'Profile: {profile_var.get() or "None"}')
+        profile_name = profile_var.get() or 'None'
+        profile_label_map = {
+            'Emergency Comms': 'emergency-only',
+            'Traveler': 'ham + emergency (Scan All)',
+            'HamScan': 'all ham/repeaters'
+        }
+        profile_label = profile_label_map.get(profile_name, profile_name)
+        lines.append(f'Profile: {profile_name} ({profile_label})')
         lines.append(f'Scanner mode: {"On" if preferences_data.get("scanner_mode").get() else "Off"}')
 
         source_name = preferences_data.get('selected_source').get() if preferences_data.get('selected_source') else 'RadioReference'
@@ -4702,13 +4600,7 @@ def launch_gui_and_run(default_pages, output_path):
         emergency_types = [et for et, var in emergency_filter_vars.items() if var.get()]
         if emergency_types:
             summary_lines.append(f'Selected emergency types: {", ".join(emergency_types)}')
-        scope_keywords = get_scope_keywords()
-        if scope_only_var.get():
-            summary_lines.append('Local only: On')
-        if scope_keywords:
-            summary_lines.append(f'Locality keywords: {", ".join(scope_keywords)}')
-        elif scope_only_var.get():
-            summary_lines.append('Local only enabled; no locality keywords set')
+        # Locality summary removed (feature deprecated)
         band_preview_text.config(state='normal')
         band_preview_text.delete('1.0', 'end')
         band_preview_text.insert('1.0', '\n'.join(lines))
@@ -4720,10 +4612,107 @@ def launch_gui_and_run(default_pages, output_path):
 
     def refresh_ui_state(*args):
         update_band_preview_and_summary()
-    band_search_var.trace_add('write', lambda *_: refresh_ui_state())
-    scope_search_var.trace_add('write', lambda *_: refresh_ui_state())
-    scope_only_var.trace_add('write', lambda *_: refresh_ui_state())
+    # Locality traces removed
+    
+    def is_band_supported_by_radio(band_name, radio_model_key='Generic'):
+        """Check if a band is supported by the selected radio model based on frequency ranges."""
+        if radio_model_key not in RADIO_MODELS:
+            radio_model_key = 'Generic'
+        
+        # Non-ham bands are always shown regardless of radio (or can be controlled separately)
+        if band_name not in BAND_RANGES:
+            return True
+        
+        # Get band frequency range
+        band_freqs = BAND_RANGES.get(band_name, [])
+        if not band_freqs:
+            return True
+        
+        # Get radio frequency ranges
+        radio_ranges = RADIO_MODELS[radio_model_key].get('frequency_ranges', [(136.0, 520.0)])
+        
+        # Check if any band frequency overlaps with radio's supported ranges
+        for band_low, band_high in band_freqs:
+            for radio_low, radio_high in radio_ranges:
+                # Check for overlap: band is within radio range
+                if (band_low >= radio_low and band_low <= radio_high) or \
+                   (band_high >= radio_low and band_high <= radio_high) or \
+                   (band_low <= radio_low and band_high >= radio_high):
+                    return True
+        
+        return False
+    
+    def update_band_checkbox_availability():
+        """Enable/disable band checkboxes based on selected radio model."""
+        # Get selected radio model
+        try:
+            model_name = preferences_data['selected_model'].get()
+            model_key = None
+            for key, model in RADIO_MODELS.items():
+                if model['name'] == model_name:
+                    model_key = key
+                    break
+            if not model_key:
+                model_key = 'Generic'
+        except Exception:
+            model_key = 'Generic'
+
+        # Determine UV-5 family and FRS/GMRS preference
+        frs_pref = 0
+        if preferences_data.get('frs_gmrs_unlock'):
+            try:
+                frs_pref = int(preferences_data.get('frs_gmrs_unlock').get())
+            except Exception:
+                frs_pref = 0
+        mk = str(model_key).lower()
+        name_lower = str(RADIO_MODELS.get(model_key, {}).get('name', '')).lower()
+        is_uv5_family = False
+        try:
+            if mk.startswith('baofeng_uv5') or 'uv5' in mk or 'uv-5' in name_lower or 'uv5' in name_lower:
+                is_uv5_family = True
+        except Exception:
+            is_uv5_family = False
+
+        # Update each band checkbox
+        unsupported_bands = []
+        for band_name, cb in band_checkbuttons.items():
+            # If UV-5 family and FRS/GMRS unlock NOT set, block the FRS/GMRS band
+            if band_name == 'FRS/GMRS' and is_uv5_family and not frs_pref:
+                cb.config(state='disabled', fg='#888888')
+                unsupported_bands.append('FRS/GMRS (locked)')
+                if band_name in band_vars:
+                    band_vars[band_name].set(0)
+                    toggle_band(band_name)
+                continue
+
+            is_supported = is_band_supported_by_radio(band_name, model_key)
+
+            if is_supported:
+                cb.config(state='normal', fg='#000000')
+            else:
+                cb.config(state='disabled', fg='#888888')
+                unsupported_bands.append(band_name)
+                # Uncheck disabled bands
+                if band_name in band_vars:
+                    band_vars[band_name].set(0)
+                    toggle_band(band_name)
+        
+        # Show notification if Generic is not selected and some bands are disabled
+        if model_key != 'Generic' and unsupported_bands:
+            model_name = RADIO_MODELS.get(model_key, {}).get('name', 'Selected model')
+            disabled_text = ', '.join(unsupported_bands)
+            band_preview_text.config(state='normal')
+            band_preview_text.delete('1.0', 'end')
+            band_preview_text.insert('1.0', f'⚠️ {model_name} does not support or has locked bands:\n{disabled_text}\n\nSwitch to "Generic" for all bands, or enable the FRS/GMRS unlock in Preferences for UV-5 models.')
+            band_preview_text.config(state='disabled')
+        else:
+            update_band_preview_and_summary()
+
     def toggle_band(band):
+        # Don't allow toggling disabled bands
+        if band in band_checkbuttons and band_checkbuttons[band].cget('state') == 'disabled':
+            band_vars[band].set(0)
+            return
         if band_vars[band].get():
             if band not in band_listbox.get(0, tk.END):
                 band_listbox.insert(tk.END, band)
@@ -4740,14 +4729,10 @@ def launch_gui_and_run(default_pages, output_path):
             band_vars[band] = v
             cb = tk.Checkbutton(frame, text=band, variable=v, command=lambda b=band: toggle_band(b))
             
-            # For Ham-SSB/AM page, organize HAM bands together with proper spacing
+            # For Ham-SSB/AM page, place all band checkboxes in a single aligned column
             if page_title == 'Ham-SSB/AM':
-                if band in HAM_BANDS:
-                    # Group HAM bands in right column next to border, no overlap
-                    cb.grid(row=j, column=2, sticky='e', padx=(10, 20), pady=(4 if j == 0 else 2))
-                else:
-                    # Non-HAM bands in left column
-                    cb.grid(row=j, column=0, sticky='w', padx=10, pady=(4 if j == 0 else 2))
+                # Compact spacing - no vertical padding between checkboxes
+                cb.grid(row=j, column=0, sticky='nw', padx=0, pady=0, in_=checkbox_frame)
             else:
                 cb.grid(row=j, column=0, sticky='w', padx=10, pady=4)
             band_checkbuttons[band] = cb
@@ -4792,6 +4777,12 @@ def launch_gui_and_run(default_pages, output_path):
         apply_profile(last_profile_name)
         profile_var.set(last_profile_name)
     update_band_preview_and_summary()
+    
+    # Initialize band checkbox availability for the default model
+    try:
+        update_band_checkbox_availability()
+    except Exception:
+        pass
 
     # Export button (centered at bottom)
     def on_export():
@@ -4965,6 +4956,23 @@ def launch_gui_and_run(default_pages, output_path):
         sel_name = preferences_data.get('selected_model').get() if preferences_data.get('selected_model') else 'Generic'
         model_key = next((k for k, v in RADIO_MODELS.items() if v['name'] == sel_name), 'Generic')
         model_obj = RADIO_MODELS.get(model_key, RADIO_MODELS['Generic'])
+        # Determine whether FRS/GMRS channels should be allowed for this model.
+        frs_pref = 0
+        if preferences_data.get('frs_gmrs_unlock'):
+            try:
+                frs_pref = int(preferences_data.get('frs_gmrs_unlock').get())
+            except Exception:
+                frs_pref = 0
+        # Only enforce the FRS/GMRS unlock preference for Baofeng UV-5 family (UV5Rxx).
+        mk = str(model_key).lower()
+        name_lower = str(model_obj.get('name', '')).lower()
+        is_uv5_family = False
+        try:
+            if mk.startswith('baofeng_uv5') or 'uv5' in mk or 'uv-5' in name_lower or 'uv5' in name_lower:
+                is_uv5_family = True
+        except Exception:
+            is_uv5_family = False
+        frs_allowed = True if not is_uv5_family else bool(frs_pref)
         max_channels = model_obj.get('max_channels')
         cust_level = preferences_data.get('customization_level').get() if preferences_data.get('customization_level') else 'Default'
 
@@ -5170,27 +5178,35 @@ def launch_gui_and_run(default_pages, output_path):
                 name, f, tone, raw = entry
                 rows.append({'Name': name or f'MURS {f}', 'Frequency': f, 'Duplex': '', 'Tone': tone or '', 'Comment': 'MURS', 'Band': 'MURS'})
 
+        # Only include FRS/GMRS channels if the user selected the band and the model/prefs allow it
         if 'FRS/GMRS' in sel_bands:
-            for entry in FRS_GMRS_FREQS:
-                name, f, duplex, tone, raw = entry
-                rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
+            if frs_allowed:
+                for entry in FRS_GMRS_FREQS:
+                    name, f, duplex, tone, raw = entry
+                    rows.append({'Name': name or f'Channel {f}', 'Frequency': f, 'Duplex': duplex or '', 'Tone': tone or '', 'Comment': 'FRS/GMRS', 'Band': 'FRS/GMRS'})
+            else:
+                if show_warnings:
+                    messagebox.showinfo('FRS/GMRS Skipped', 'FRS/GMRS channels were skipped because the selected model is a Baofeng and the application preference to unlock FRS/GMRS is disabled.')
 
-        # Add local calling frequencies when Local Calling Frequencies is enabled
+        # Optionally include national/regional calling frequencies (simplex)
         calling_freq_rows = []
-        if scope_only_var.get() and any(band in sel_bands for band in ['2m', '70cm', '1.25m']):
+        try:
+            include_nat = int(include_national_calling_var.get()) if include_national_calling_var else 0
+        except Exception:
+            include_nat = 0
+        if include_nat and any(band in sel_bands for band in ['2m', '70cm', '1.25m']):
             for entry in LOCAL_CALLING_FREQS:
                 name, f, duplex, tone = entry
-                # Determine which band this frequency belongs to
                 try:
                     freq_float = float(f)
-                    if 144.0 <= freq_float <= 148.0 and '2m' in sel_bands:
-                        calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '2m'})
-                    elif 420.0 <= freq_float <= 450.0 and '70cm' in sel_bands:
-                        calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '70cm'})
-                    elif 222.0 <= freq_float <= 225.0 and '1.25m' in sel_bands:
-                        calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'Local Calling', 'Band': '1.25m'})
                 except Exception:
                     continue
+                if 144.0 <= freq_float <= 148.0 and '2m' in sel_bands:
+                    calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'National Calling', 'Band': '2m'})
+                elif 420.0 <= freq_float <= 450.0 and '70cm' in sel_bands:
+                    calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'National Calling', 'Band': '70cm'})
+                elif 222.0 <= freq_float <= 225.0 and '1.25m' in sel_bands:
+                    calling_freq_rows.append({'Name': name, 'Frequency': f, 'Duplex': duplex, 'Tone': tone, 'Comment': 'National Calling', 'Band': '1.25m'})
 
         if model_obj.get('frequency_ranges'):
             original_count = len(rows)
@@ -5225,6 +5241,9 @@ def launch_gui_and_run(default_pages, output_path):
                             'Band': 'Separator'
                         })
                     rows.extend(zip_rows[zip_code])
+        elif calling_freq_rows:
+            # If no ZIP codes but calling frequencies exist, add them at position 2
+            rows = calling_freq_rows + rows
 
         rows = _dedupe_export_rows(rows)
 
@@ -5240,7 +5259,7 @@ def launch_gui_and_run(default_pages, output_path):
         band_order = {b: i for i, b in enumerate(sel_bands)}
         def sort_key(r):
             # Calling frequencies stay at top (already positioned)
-            if r.get('Comment') == 'Local Calling':
+            if r.get('Comment') in ('Local Calling', 'National Calling'):
                 return (0, numeric_frequency(r.get('Frequency', 0)))
             # Then sort by band order
             band_order_val = band_order.get(r.get('Band'), 999)
@@ -5432,8 +5451,13 @@ def launch_gui_and_run(default_pages, output_path):
                 if c not in outdf.columns:
                     outdf[c] = ''
             outdf = outdf[cols]
-            outdf.index = [f"{i:03d}" for i in range(1, len(outdf)+1)]
+            # Add blank entries for 000 and 001 at the beginning for user convenience
+            blank_data = {c: '' for c in cols}
+            blank_rows = pd.DataFrame([blank_data, blank_data], index=['000', '001'])
+            blank_rows.index.name = 'Location'
+            outdf.index = [f"{i:03d}" for i in range(2, len(outdf)+2)]
             outdf.index.name = 'Location'
+            outdf = pd.concat([blank_rows, outdf])
             exported_data['export_stats'] = _format_export_statistics(stats_df)
             exported_data['dataframe'] = outdf
             exported_data['row_count'] = len(outdf)
@@ -5758,10 +5782,14 @@ def launch_gui_and_run(default_pages, output_path):
     ToolTip(preview_btn, 'Preview the generated export and open a print-friendly PDF preview in your browser')
 
     status_var = tk.StringVar(value='Ready')
+    index_status_var = tk.StringVar(value=f'ZIP DB: {get_radioref_db_status()}')
     status_bar = tk.Frame(root, bd=1, relief='sunken')
     status_bar.grid(row=export_row+1, column=0, columnspan=4, sticky='ew', padx=8, pady=(0,4))
     status_label = tk.Label(status_bar, textvariable=status_var, anchor='w', font=('Arial', 9))
-    status_label.pack(fill='x', padx=6, pady=4)
+    status_label.pack(side='left', fill='x', expand=True, padx=6, pady=4)
+    index_status_label = tk.Label(status_bar, textvariable=index_status_var, anchor='e', font=('Arial', 9, 'italic'))
+    index_status_label.pack(side='right', padx=6, pady=4)
+    ToolTip(index_status_label, 'Displays whether the local ZIP DB is current, stale, missing, or unknown. Use Create/Update ZIP DB to refresh it from the internet.')
 
     def update_status_bar(exported_rows=None, profile_name=None, last_path=None):
         parts = ['Ready']
@@ -5773,7 +5801,24 @@ def launch_gui_and_run(default_pages, output_path):
             parts.append(f'Last path: {last_path}')
         status_var.set(' | '.join(parts))
 
+    def update_zip_db_status():
+        status = get_radioref_db_status()
+        index_status_var.set(f'ZIP DB: {status}')
+        if status == 'Missing':
+            index_status_label.config(fg='#c62828')
+        elif status == 'Unknown':
+            index_status_label.config(fg='#616161')
+        else:
+            age_days = get_radioref_db_age_days()
+            if age_days is None:
+                index_status_label.config(fg='#616161')
+            elif age_days <= 30:
+                index_status_label.config(fg='#2e7d32')
+            else:
+                index_status_label.config(fg='#f57c00')
+
     update_status_bar()
+    update_zip_db_status()
 
     root.mainloop()
 
