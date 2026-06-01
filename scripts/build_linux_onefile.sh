@@ -8,7 +8,6 @@ if [[ ! -x .venv/bin/python ]]; then
   exit 1
 fi
 
-.venv/bin/python -m pip install pyinstaller
 .venv/bin/python -m PyInstaller \
   --noconfirm \
   --clean \

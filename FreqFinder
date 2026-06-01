@@ -7,7 +7,10 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BOOTSTRAP = os.path.join(HERE, 'bootstrap.py')
+FREQFINDER = os.path.join(HERE, 'freqfinder.py')
 
-# Always launch via bootstrap run path. GUI is the default behavior there.
-os.execv(sys.executable, [sys.executable, BOOTSTRAP, 'run'])
+if not os.path.exists(FREQFINDER):
+    raise FileNotFoundError(f'Could not find {FREQFINDER}. Please ensure this repository contains freqfinder.py.')
+
+# Launch the main application script directly.
+os.execv(sys.executable, [sys.executable, FREQFINDER] + sys.argv[1:])

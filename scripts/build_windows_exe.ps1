@@ -9,7 +9,6 @@ if (-not (Test-Path $PythonExe)) {
     Write-Error "Missing venv Python at '$PythonExe'. Run: python bootstrap.py install"
 }
 
-& $PythonExe -m pip install pyinstaller
 & $PythonExe -m PyInstaller `
     --noconfirm `
     --clean `

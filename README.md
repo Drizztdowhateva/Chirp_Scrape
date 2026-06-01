@@ -15,6 +15,11 @@ This project uses a small index file, `radioref.csv`, to map RadioReference CTID
 
 **📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation and [docs/RADIO_DIGITAL_CAPABILITIES.md](docs/RADIO_DIGITAL_CAPABILITIES.md) for radio model details.
 
+## Important Notes
+
+- **FRS/GMRS Unlock (Baofeng UV‑5 family only):** For Baofeng UV‑5 series radios the FRS/GMRS band remains disabled by default. If your UV‑5 device has been firmware‑unlocked and you have completed the unlock routine, enable **Treat FRS/GMRS as unlocked** in Preferences to include FRS/GMRS channels. Other radio models (and the `Generic` model) may select FRS/GMRS without this preference.
+- **Locality Removed:** The previous "Locality" / "Local Calling Frequencies" option was removed due to confusion and unreliable behavior; local calling frequencies are no longer inserted automatically.
+
 ## Technical Business Profile 🏢
 
 FreqFinder is a technical-business utility for radio data operations with a local-first workflow, packaging support, and practical automation for field and office teams.
@@ -26,96 +31,69 @@ FreqFinder is a technical-business utility for radio data operations with a loca
 
 ## Quick Start ✅
 
-### Gradle (Java) local init
+### Install once
 
-This repository supports both Python packaging and Gradle Java tooling. If you see "Gradle init" issues, use the bundled wrapper:
-
-```bash
-./gradlew --no-daemon --stacktrace --info clean build
-./gradlew test
-./gradlew run
-```
-
-If this repository is checked out without wrapper and you must regenerate:
+This project is designed to install dependencies once and reuse the same local environment across runs.
 
 ```bash
-gradle wrapper
-./gradlew --no-daemon --stacktrace --info clean build
+python3 bootstrap.py install
 ```
 
----
+### Run the app
 
-1. **One-step runtime (recommended)**
-
-   Run the `freqfinder.sh` launcher to create or repair the virtual environment, install dependencies (including `pip==26.0.1`), and launch the app in GUI mode by default (no switches):
-
-   Linux / macOS:
-
-   ```bash
-   ./freqfinder.sh
-   ```
-
-   Windows (PowerShell):
-
-   ```powershell
-   python FreqFinder
-   ```
-
-   Windows (cmd.exe):
-
-   ```cmd
-   python FreqFinder
-   ```
-
-2. **Manual setup (alternative)**
-
-   If you prefer to create the venv yourself, follow the platform-specific steps below.
-
-   Linux / macOS (bash/zsh):
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   python -m pip install pip==26.0.1
-   pip install -r requirements.txt
-   python3 freqfinder.py --gui
-   ```
-
-   Windows (PowerShell):
-
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   python -m pip install pip==26.0.1
-   pip install -r requirements.txt
-   python freqfinder.py --gui
-   ```
-
-   Windows (cmd.exe):
-
-   ```cmd
-   python -m venv .venv
-   .\.venv\Scripts\activate.bat
-   pip install -r requirements.txt
-   python freqfinder.py --gui
-   ```
-
-3. **Check output:**
-   - Output files are generated in the project directory by default (e.g., `chirp_output.csv`).
-   - Sample output in this repository is stored at `outputs/chirp_output.csv`.
-
-## One Runtime File
-
-Primary runtime command (GUI default, no switches):
+- Linux/macOS:
 
 ```bash
-./freqfinder.sh
+./FreqFinder
 ```
 
-Runtime launchers are kept in the main project directory for easy discovery:
+- Windows (PowerShell or CMD):
 
-- `freqfinder.sh`
-- `bootstrap.py`
+```powershell
+python FreqFinder
+```
+
+If you want to launch explicitly from the local venv:
+
+```bash
+python3 bootstrap.py run -- --gui
+```
+
+### Create or update the ZIP database
+
+Use the new File menu option in the GUI:
+
+- `File → Create/Update ZIP DB...`
+
+This refreshes `radioref.csv` from the configured repository and checks internet connectivity first.
+
+### Alternative build commands
+
+If you prefer to use packaging helpers directly after installing once:
+
+- Linux onefile binary:
+
+```bash
+./scripts/build_linux_onefile.sh
+```
+
+- Linux AppImage:
+
+```bash
+./scripts/build_linux_appimage.sh
+```
+
+- macOS app + DMG:
+
+```bash
+./scripts/build_macos_app_dmg.sh
+```
+
+- Windows EXE:
+
+```powershell
+./scripts/build_windows_exe.ps1
+```
 
 ## Data Source Options
 
@@ -136,22 +114,20 @@ To show the QRZ helper stub and verify the integration point:
 python freqfinder.py --qrz-stub
 ```
 
-Use `bootstrap.py` as the single runtime entrypoint for install/run/test/security:
+Use `bootstrap.py` as the single runtime entrypoint for install/run/package workflows, so dependencies are installed only once and packaging is platform-native:
 
 ```bash
-python3 bootstrap.py run        # install deps, then run app
-python3 bootstrap.py install    # install deps only
-python3 bootstrap.py test       # syntax + unittest smoke tests
-python3 bootstrap.py security   # lightweight static security scan
-python3 bootstrap.py package    # build one-time distributable for this OS
-python3 bootstrap.py all        # install + security + test + run
+python3 bootstrap.py install          # create .venv and install runtime + packaging deps once
+python3 bootstrap.py run -- --gui     # launch the app from the local venv
+python3 bootstrap.py package          # build the OS-specific distributable
+python3 bootstrap.py package --appimage  # build AppImage on Linux as well
 ```
 
-Legacy flags still work (`--install-only`, `--test`, `--security-check`, `--gui`).
+If you prefer the existing shell helpers, they now assume `.venv` already exists and dependencies are installed.
 
-## Build App, DMG, EXE (One-Time Packaging)
+## Build App, DMG, EXE, AppImage (One-Time Packaging)
 
-Packaging is platform-native. Build on the target OS:
+Packaging is platform-native. Build on the target OS after running `python3 bootstrap.py install`.
 
 ### Linux Onefile Binary
 
@@ -162,6 +138,16 @@ Packaging is platform-native. Build on the target OS:
 Output:
 
 - `dist/FreqFinder`
+
+### Linux AppImage
+
+```bash
+./scripts/build_linux_appimage.sh
+```
+
+Output:
+
+- `dist/FreqFinder.AppImage`
 
 ### macOS App + DMG
 
